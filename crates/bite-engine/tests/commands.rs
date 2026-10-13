@@ -440,3 +440,11 @@ fn registry_lists_exactly_the_parameters_each_command_requires() {
         }
     }
 }
+
+#[test]
+fn a_document_id_converts_to_the_number_it_is_written_as() {
+    let id: DocumentId = "7".parse().unwrap();
+
+    assert_eq!(u64::from(id), 7);
+    assert_eq!(id.to_string(), "7");
+}

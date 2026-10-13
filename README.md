@@ -31,7 +31,7 @@ MCP server: later client of the same engine command interface
 
 The Rust engine owns document state, command execution, validation, and undo/history. The SwiftUI app observes engine state and dispatches commands; it must not become a second implementation of document rules. The CLI is a headless test and automation surface. MCP can be added after the command contract is useful and stable.
 
-The precise Rust-to-Swift bridge is still an implementation decision. Keep the boundary small and record the choice in an architecture decision record before relying on it throughout the app.
+The Rust-to-Swift bridge is a small hand-written C interface in `crates/bite-ffi`; `docs/architecture/0002-swift-rust-bridge.md` records the choice and its alternatives. Keep the boundary small.
 
 ## Repository layout
 
@@ -41,6 +41,7 @@ bite-apps/
 │   └── TextBite/             # native macOS SwiftUI app
 ├── crates/
 │   ├── bite-engine/          # headless document model and commands
+│   ├── bite-ffi/             # C interface used by the SwiftUI app
 │   └── bite-cli/             # command-line interface
 ├── docs/
 │   └── architecture/        # decisions and design notes
@@ -61,7 +62,7 @@ cargo check --workspace
 cargo test --workspace
 ```
 
-Open the TextBite Xcode project under `apps/` and run it with **⌘R**. App Store distribution, signing for public release, cloud sync, accounts, subscriptions, and monetization are out of scope for the first slice.
+Open the TextBite Xcode project under `apps/` and run it with **⌘R**. The Xcode build runs `cargo` to build the engine, so a Rust toolchain must be installed. App Store distribution, signing for public release, cloud sync, accounts, subscriptions, and monetization are out of scope for the first slice.
 
 ## First-slice acceptance criteria
 

@@ -9,3 +9,10 @@ version = "0.1.0"
 [[package]]
 name = "bite-engine"
 version = "0.1.0"
+
+[[package]]
+name = "bite-ffi"
+version = "0.1.0"
+dependencies = [
+ "bite-engine",
+]

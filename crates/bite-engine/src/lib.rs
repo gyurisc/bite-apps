@@ -180,6 +180,12 @@ impl FromStr for DocumentId {
     }
 }
 
+impl From<DocumentId> for u64 {
+    fn from(id: DocumentId) -> Self {
+        id.0
+    }
+}
+
 /// An in-memory plain-text document and its undo/redo history.
 ///
 /// History is kept as whole-text snapshots, one per change.
