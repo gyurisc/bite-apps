@@ -14,8 +14,8 @@ This roadmap tracks the first useful macOS app and the shared patterns it proves
 
 | ID | Milestone | Exit criteria | Status |
 |---|---|---|---|
-| M0 | Workspace and native shell | Cargo workspace checks; TextBite SwiftUI template builds and launches locally | In progress |
-| M1 | Engine vertical slice | Headless Rust document model; stable command IDs; tests for create/edit/undo | Planned |
+| M0 | Workspace and native shell | Cargo workspace checks; TextBite SwiftUI template builds and launches locally | Done |
+| M1 | Engine vertical slice | Headless Rust document model; stable command IDs; tests for create/edit/undo | Done |
 | M2 | Plain-text persistence | Open and save UTF-8 text; round-trip tests; clear error handling | Planned |
 | M3 | CLI surface | CLI opens/creates a document and applies the same engine commands | Planned |
 | M4 | SwiftUI integration | UI displays engine state and dispatches commands through one small Rust bridge | Planned |
