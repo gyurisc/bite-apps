@@ -1,6 +1,6 @@
 # Bite Apps
 
-Bite Apps is a family of clean-room, open-source reimplementations of familiar stock Apple applications. The goal is to build useful, native-feeling macOS tools that people and AI agents can control, while keeping documents portable and using standard formats where practical.
+Bite Apps is a personal project to reimplement familiar stock macOS apps for fun. The goal is to build clean-room, open-source, native-feeling tools while learning along the way and keeping documents portable where practical. Future paid apps, support, or related services remain possible; there is no monetization requirement for the first slice.
 
 The name is intentionally short and playful. Each app uses the `Bite` suffix: TextBite, GridBite, NoteBite, and so on.
 
@@ -74,4 +74,4 @@ Open the TextBite Xcode project under `apps/` and run it with **⌘R**. App Stor
 
 ## License
 
-Choose and add an open-source license before publishing the repository. Do not copy another project's license, brand assets, or attribution notices without checking that they apply to this project.
+The code in this repository is licensed under the MIT License; see [LICENSE](LICENSE).
