@@ -13,12 +13,21 @@
 //! | ID | Parameters | Effect |
 //! |---|---|---|
 //! | `document.create` | none | Creates an empty document. |
+//! | `document.load` | `text` | Creates a document holding `text`, with no undo history. |
 //! | `document.replace_text` | `document`, `text` | Replaces the whole text. |
 //! | `document.undo` | `document` | Reverts the most recent change. |
 //! | `document.redo` | `document` | Reapplies the most recently undone change. |
 //!
 //! `document` is the decimal ID of a document created by this engine. Every
 //! listed parameter is required, and a command accepts no others.
+//!
+//! # Loading and saving
+//!
+//! The engine never touches files. To open one, a host reads its bytes,
+//! turns them into text with [`text_from_utf8`], and dispatches
+//! `document.load`. To save, it writes the bytes of [`Document::text`]. The
+//! text is kept exactly as loaded, so an unedited document saves back byte
+//! for byte.
 //!
 //! ```
 //! use bite_engine::{Engine, command_id};
@@ -43,6 +52,7 @@ use std::str::FromStr;
 /// The stable string IDs commands are dispatched under.
 pub mod command_id {
     pub const CREATE: &str = "document.create";
+    pub const LOAD: &str = "document.load";
     pub const REPLACE_TEXT: &str = "document.replace_text";
     pub const UNDO: &str = "document.undo";
     pub const REDO: &str = "document.redo";
@@ -62,6 +72,11 @@ pub const COMMANDS: &[CommandSpec] = &[
         id: command_id::CREATE,
         summary: "Creates an empty document.",
         params: &[],
+    },
+    CommandSpec {
+        id: command_id::LOAD,
+        summary: "Creates a document holding the given text, with no undo history.",
+        params: &["text"],
     },
     CommandSpec {
         id: command_id::REPLACE_TEXT,
@@ -84,6 +99,7 @@ pub const COMMANDS: &[CommandSpec] = &[
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Command {
     CreateDocument,
+    LoadDocument { text: String },
     ReplaceText { document: DocumentId, text: String },
     Undo { document: DocumentId },
     Redo { document: DocumentId },
@@ -101,6 +117,9 @@ impl Command {
         let args = Args::new(spec, params)?;
         match spec.id {
             command_id::CREATE => Ok(Self::CreateDocument),
+            command_id::LOAD => Ok(Self::LoadDocument {
+                text: args.get("text")?.to_owned(),
+            }),
             command_id::REPLACE_TEXT => Ok(Self::ReplaceText {
                 document: args.document()?,
                 text: args.get("text")?.to_owned(),
@@ -198,10 +217,10 @@ pub struct Document {
 }
 
 impl Document {
-    fn new(id: DocumentId) -> Self {
+    fn new(id: DocumentId, text: String) -> Self {
         Self {
             id,
-            text: String::new(),
+            text,
             undo_stack: Vec::new(),
             redo_stack: Vec::new(),
         }
@@ -278,6 +297,10 @@ pub enum EngineError {
     UnknownDocument(DocumentId),
     NothingToUndo(DocumentId),
     NothingToRedo(DocumentId),
+    /// Bytes offered as text stop being UTF-8 at `offset`.
+    InvalidUtf8 {
+        offset: usize,
+    },
 }
 
 impl fmt::Display for EngineError {
@@ -308,11 +331,25 @@ impl fmt::Display for EngineError {
             Self::UnknownDocument(id) => write!(f, "no document with ID {id}"),
             Self::NothingToUndo(id) => write!(f, "document {id} has nothing to undo"),
             Self::NothingToRedo(id) => write!(f, "document {id} has nothing to redo"),
+            Self::InvalidUtf8 { offset } => {
+                write!(f, "not valid UTF-8 text: invalid byte at offset {offset}")
+            }
         }
     }
 }
 
 impl std::error::Error for EngineError {}
+
+/// Reads file contents as text for [`command_id::LOAD`].
+///
+/// Only UTF-8 is accepted. Nothing is normalized: line endings and a leading
+/// byte-order mark stay in the text, so the bytes of [`Document::text`] are
+/// what a host writes back when saving.
+pub fn text_from_utf8(bytes: &[u8]) -> Result<&str, EngineError> {
+    std::str::from_utf8(bytes).map_err(|error| EngineError::InvalidUtf8 {
+        offset: error.valid_up_to(),
+    })
+}
 
 /// Owns every open document and applies commands to them.
 #[derive(Debug, Default)]
@@ -338,11 +375,8 @@ impl Engine {
     /// Applies `command` and returns the document it affected.
     pub fn execute(&mut self, command: Command) -> Result<&Document, EngineError> {
         let document = match command {
-            Command::CreateDocument => {
-                self.last_id += 1;
-                let id = DocumentId(self.last_id);
-                self.documents.entry(id).or_insert(Document::new(id))
-            }
+            Command::CreateDocument => self.add_document(String::new()),
+            Command::LoadDocument { text } => self.add_document(text),
             Command::ReplaceText { document, text } => {
                 let document = self.document_mut(document)?;
                 document.replace_text(text);
@@ -364,6 +398,12 @@ impl Engine {
 
     pub fn document(&self, id: DocumentId) -> Option<&Document> {
         self.documents.get(&id)
+    }
+
+    fn add_document(&mut self, text: String) -> &mut Document {
+        self.last_id += 1;
+        let id = DocumentId(self.last_id);
+        self.documents.entry(id).or_insert(Document::new(id, text))
     }
 
     fn document_mut(&mut self, id: DocumentId) -> Result<&mut Document, EngineError> {
