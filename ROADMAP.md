@@ -18,7 +18,7 @@ This roadmap tracks the first useful macOS app and the shared patterns it proves
 | M1 | Engine core | Headless Rust document model; stable command IDs; tests for create/edit/undo | Done |
 | M2 | Bridge spike | SwiftUI app dispatches one engine command through a Rust bridge and displays the result; binding choice recorded as an ADR | Done |
 | M3 | Plain-text persistence | Engine loads UTF-8 text and returns it byte for byte; round-trip tests; clear error for invalid UTF-8 | Done |
-| M4 | CLI surface | CLI opens or creates a file, applies the same engine commands, and saves through a safe write | Planned |
+| M4 | CLI surface | CLI opens or creates a file, applies the same engine commands, and saves through a safe write | Done |
 | M5 | SwiftUI integration | UI displays engine state and dispatches the remaining commands through the M2 bridge | Planned |
 | M6 | First useful release | New/open/save, editing, undo/redo, basic menus and keyboard shortcuts, local use without a service | Planned |
 | M7 | Agent interface | MCP server exposes a small, documented subset of the stable command surface | Later |
