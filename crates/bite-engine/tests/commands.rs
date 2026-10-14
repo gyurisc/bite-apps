@@ -1,6 +1,6 @@
 //! Behavior of the engine's commands, exercised through the public API only.
 
-use bite_engine::{COMMANDS, Command, DocumentId, Engine, EngineError};
+use bite_engine::{COMMANDS, Command, DocumentId, Engine, EngineError, text_from_utf8};
 
 fn create(engine: &mut Engine) -> DocumentId {
     engine.execute(Command::CreateDocument).unwrap().id()
@@ -410,6 +410,7 @@ fn registry_lists_exactly_the_parameters_each_command_requires() {
         ids,
         [
             "document.create",
+            "document.load",
             "document.replace_text",
             "document.undo",
             "document.redo",
@@ -447,4 +448,127 @@ fn a_document_id_converts_to_the_number_it_is_written_as() {
 
     assert_eq!(u64::from(id), 7);
     assert_eq!(id.to_string(), "7");
+}
+
+fn load(engine: &mut Engine, text: &str) -> DocumentId {
+    engine
+        .dispatch("document.load", &[("text", text)])
+        .unwrap()
+        .id()
+}
+
+#[test]
+fn load_creates_a_document_holding_the_text_without_history() {
+    let mut engine = Engine::new();
+
+    let document = engine
+        .dispatch("document.load", &[("text", "from a file\r\n")])
+        .unwrap();
+
+    assert_eq!(document.text(), "from a file\r\n");
+    assert!(!document.can_undo());
+    assert!(!document.can_redo());
+}
+
+#[test]
+fn loading_is_not_an_undoable_change() {
+    let mut engine = Engine::new();
+    let id = load(&mut engine, "loaded");
+
+    let result = engine.execute(Command::Undo { document: id });
+
+    assert_eq!(result, Err(EngineError::NothingToUndo(id)));
+    assert_eq!(text(&engine, id), "loaded");
+}
+
+#[test]
+fn undoing_every_edit_returns_to_the_loaded_text() {
+    let mut engine = Engine::new();
+    let id = load(&mut engine, "loaded");
+    replace(&mut engine, id, "edited once");
+    replace(&mut engine, id, "edited twice");
+
+    engine.execute(Command::Undo { document: id }).unwrap();
+    engine.execute(Command::Undo { document: id }).unwrap();
+
+    assert_eq!(text(&engine, id), "loaded");
+    assert!(!engine.document(id).unwrap().can_undo());
+}
+
+#[test]
+fn loaded_and_created_documents_share_one_id_sequence() {
+    let mut engine = Engine::new();
+
+    let created = create(&mut engine);
+    let loaded = load(&mut engine, "x");
+
+    assert_ne!(created, loaded);
+    assert_eq!(text(&engine, created), "");
+    assert_eq!(text(&engine, loaded), "x");
+}
+
+#[test]
+fn load_requires_its_text() {
+    let mut engine = Engine::new();
+
+    let result = engine.dispatch("document.load", &[]);
+
+    assert_eq!(
+        result,
+        Err(EngineError::MissingParameter {
+            command: "document.load",
+            name: "text",
+        })
+    );
+}
+
+#[test]
+fn file_bytes_survive_decoding_loading_and_saving_unchanged() {
+    let files: [&[u8]; 11] = [
+        b"",
+        b"plain",
+        b"unix\nlines\n",
+        b"windows\r\nlines\r\n",
+        b"old mac\rlines\r",
+        b"mixed\r\nline\nendings\r",
+        b"no trailing newline",
+        b"\n\n\n",
+        b"\xEF\xBB\xBFstarts with a byte-order mark\n",
+        b"nul\0inside",
+        "accents \u{E9}, emoji \u{1F34E}, combining e\u{301}\n".as_bytes(),
+    ];
+
+    for file in files {
+        let mut engine = Engine::new();
+        let decoded = text_from_utf8(file).unwrap();
+        let id = load(&mut engine, decoded);
+
+        assert_eq!(text(&engine, id).as_bytes(), file);
+    }
+}
+
+#[test]
+fn bytes_that_are_not_utf8_are_rejected_at_the_first_bad_byte() {
+    let cases: [(&[u8], usize); 5] = [
+        (b"\xFF", 0),
+        (b"ab\xFFcd", 2),
+        (b"caf\xE9 in Latin-1", 3),
+        (b"cut off mid-character \xE2\x82", 22),
+        (b"\xFF\xFEU\0T\0F\0-\x001\x006\0", 0),
+    ];
+
+    for (bytes, offset) in cases {
+        assert_eq!(
+            text_from_utf8(bytes),
+            Err(EngineError::InvalidUtf8 { offset })
+        );
+    }
+}
+
+#[test]
+fn the_invalid_utf8_message_says_where_the_bad_byte_is() {
+    let message = text_from_utf8(b"0123456\xFF").unwrap_err().to_string();
+
+    assert!(message.contains("UTF-8"), "{message}");
+    assert!(message.contains('7'), "{message}");
 }
