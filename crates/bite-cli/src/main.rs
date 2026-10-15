@@ -1,3 +1,175 @@
-fn main() {
-    println!("Hello, world!");
+//! Command-line host for the Bite engine.
+//!
+//! `bite-cli FILE [COMMAND [NAME=VALUE]...]...` opens FILE, runs engine
+//! commands on it by their stable IDs, and saves the result. See [`USAGE`].
+
+mod save;
+
+use bite_engine::{COMMANDS, CommandSpec, DocumentId, Engine, command_id, text_from_utf8};
+use std::ffi::OsString;
+use std::path::{Path, PathBuf};
+use std::process::ExitCode;
+use std::{env, fs, io};
+
+const USAGE: &str = "\
+Usage: bite-cli FILE [COMMAND [NAME=VALUE]...]...
+
+Opens FILE, or starts an empty document if FILE does not exist, runs each
+COMMAND on it in order, and saves the result. bite-cli supplies the
+`document` parameter. Undo and redo reach back only to changes made earlier
+in the same run.
+
+FILE is saved only if every command succeeds, through a temporary file and a
+rename, and is left untouched if its text ends up unchanged. Only UTF-8
+files can be opened.
+
+Exit status: 0 on success, 1 if a command or the file fails, 2 for a
+malformed command line.
+
+Commands:
+";
+
+/// What the command line asks for.
+enum Request {
+    Help,
+    Edit { path: PathBuf, steps: Vec<Step> },
+}
+
+/// One command and the parameters given to it on the command line.
+struct Step {
+    id: String,
+    params: Vec<(String, String)>,
+}
+
+fn main() -> ExitCode {
+    match parse(env::args_os().skip(1)) {
+        Ok(Request::Help) => {
+            print!("{}", help());
+            ExitCode::SUCCESS
+        }
+        Ok(Request::Edit { path, steps }) => match edit(&path, &steps) {
+            Ok(()) => ExitCode::SUCCESS,
+            Err(message) => {
+                eprintln!("bite-cli: {message}");
+                ExitCode::FAILURE
+            }
+        },
+        Err(message) => {
+            eprint!("bite-cli: {message}\n\n{}", help());
+            ExitCode::from(2)
+        }
+    }
+}
+
+fn help() -> String {
+    let mut help = USAGE.to_owned();
+    for spec in COMMANDS.iter().filter(|spec| acts_on_document(spec)) {
+        help.push_str("  ");
+        help.push_str(spec.id);
+        for param in spec.params.iter().filter(|param| **param != "document") {
+            help.push_str(&format!(" {param}=VALUE"));
+        }
+        help.push_str(&format!("\n      {}\n", spec.summary));
+    }
+    help
+}
+
+fn acts_on_document(spec: &CommandSpec) -> bool {
+    spec.params.contains(&"document")
+}
+
+fn parse(mut args: impl Iterator<Item = OsString>) -> Result<Request, String> {
+    let Some(path) = args.next() else {
+        return Err("missing FILE".to_owned());
+    };
+    if path == "-h" || path == "--help" {
+        return Ok(Request::Help);
+    }
+    if path.as_encoded_bytes().starts_with(b"-") {
+        return Err(format!("unknown option {}", path.to_string_lossy()));
+    }
+
+    let mut steps: Vec<Step> = Vec::new();
+    for arg in args {
+        let arg = arg
+            .into_string()
+            .map_err(|arg| format!("argument {arg:?} is not valid UTF-8"))?;
+        let Some((name, value)) = arg.split_once('=') else {
+            let spec = COMMANDS.iter().find(|spec| spec.id == arg);
+            if spec.is_some_and(|spec| !acts_on_document(spec)) {
+                return Err(format!(
+                    "`{arg}` cannot be used here: bite-cli opens FILE itself"
+                ));
+            }
+            steps.push(Step {
+                id: arg,
+                params: Vec::new(),
+            });
+            continue;
+        };
+        if name == "document" {
+            return Err("bite-cli supplies the `document` parameter itself".to_owned());
+        }
+        let Some(step) = steps.last_mut() else {
+            return Err(format!("parameter {arg:?} comes before any command"));
+        };
+        step.params.push((name.to_owned(), value.to_owned()));
+    }
+    Ok(Request::Edit {
+        path: PathBuf::from(path),
+        steps,
+    })
+}
+
+/// Opens the file, runs `steps` on it, and saves it if its text changed.
+fn edit(path: &Path, steps: &[Step]) -> Result<(), String> {
+    let shown = path.display();
+    let original = match fs::read(path) {
+        Ok(bytes) => Some(bytes),
+        Err(error) if error.kind() == io::ErrorKind::NotFound => None,
+        Err(error) => return Err(format!("cannot read {shown}: {error}")),
+    };
+
+    let mut engine = Engine::new();
+    let opened = match &original {
+        Some(bytes) => {
+            let text =
+                text_from_utf8(bytes).map_err(|error| format!("cannot open {shown}: {error}"))?;
+            engine.dispatch(command_id::LOAD, &[("text", text)])
+        }
+        None => engine.dispatch(command_id::CREATE, &[]),
+    };
+    let id = opened.map_err(|error| error.to_string())?.id();
+    let document = id.to_string();
+
+    for step in steps {
+        let mut params: Vec<(&str, &str)> = step
+            .params
+            .iter()
+            .map(|(name, value)| (name.as_str(), value.as_str()))
+            .collect();
+        if COMMANDS
+            .iter()
+            .any(|spec| spec.id == step.id && acts_on_document(spec))
+        {
+            params.push(("document", &document));
+        }
+        engine
+            .dispatch(&step.id, &params)
+            .map_err(|error| format!("{}: {error}; nothing was saved", step.id))?;
+    }
+
+    let text = text_of(&engine, id)?;
+    if original.as_deref() == Some(text.as_bytes()) {
+        return Ok(());
+    }
+    save::save(path, text.as_bytes())
+        .map_err(|error| format!("cannot save {shown}: {error}; nothing was saved"))
+}
+
+fn text_of(engine: &Engine, id: DocumentId) -> Result<&str, String> {
+    engine
+        .document(id)
+        .map(|document| document.text())
+        .ok_or_else(|| format!("document {id} disappeared from the engine"))
 }

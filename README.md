@@ -62,6 +62,13 @@ cargo check --workspace
 cargo test --workspace
 ```
 
+The CLI opens a plain-text file, or creates it, runs engine commands on it by their IDs, and saves the result:
+
+```sh
+cargo run -p bite-cli -- notes.txt document.replace_text 'text=Hello'
+cargo run -p bite-cli -- --help
+```
+
 Open the TextBite Xcode project under `apps/` and run it with **⌘R**. The Xcode build runs `cargo` to build the engine, so a Rust toolchain must be installed. App Store distribution, signing for public release, cloud sync, accounts, subscriptions, and monetization are out of scope for the first slice.
 
 ## First-slice acceptance criteria
