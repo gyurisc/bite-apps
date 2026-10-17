@@ -10,7 +10,8 @@ final class EngineCompositionTests: XCTestCase {
 
     @MainActor
     private func makeEditor() -> (EditorTextView, DocumentModel, DocumentEditor.Coordinator) {
-        let model = DocumentModel()
+        let model = DocumentModel(engine: EngineBridge())
+        model.open()
         let coordinator = DocumentEditor.Coordinator(model: model)
         let view = EditorTextView(frame: NSRect(x: 0, y: 0, width: 300, height: 100))
         DocumentEditor.connect(view, to: coordinator)

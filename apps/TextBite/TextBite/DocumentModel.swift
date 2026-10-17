@@ -15,16 +15,54 @@ struct ViewChange: Equatable {
     let changed: NSRange
 }
 
-/// The app's view of one engine document. Every change goes through an engine
-/// command; this type only holds what the engine last reported.
+/// The app's view of one engine document, owned by one window. Every change
+/// goes through an engine command; this type only holds what the engine
+/// last reported.
 @Observable
 final class DocumentModel {
-    private let engine = EngineBridge()
+    @ObservationIgnored private let engine: EngineBridge
     private(set) var document: DocumentState?
     private(set) var errorMessage: String?
+    /// True once the document is closed; a closed model stays closed.
+    private var closed = false
+    /// Ends editing that the engine has not seen yet, such as a composition,
+    /// before a command other than an edit. The editor sets it.
+    @ObservationIgnored var finishEditing: () -> Void = {}
 
-    init() {
+    /// A model for a document in `engine`. It creates the document when
+    /// opened, so making a model has no effect on the engine.
+    init(engine: EngineBridge) {
+        self.engine = engine
+    }
+
+    // In this target a plain Swift class without an explicit deinit gets a
+    // main-actor one, and releasing such an object under XCTest on macOS 15
+    // crashes in swift_task_deinitOnExecutor. An explicit deinit, like
+    // EngineBridge's, is not isolated. Nothing here needs the main actor.
+    nonisolated deinit {}
+
+    /// Creates the document, once.
+    func open() {
+        guard document == nil, !closed else { return }
         run("document.create")
+    }
+
+    /// Ends editing in progress, then closes the document with
+    /// `document.close`, as when its window closes.
+    func close() {
+        guard document != nil else { return }
+        finishEditing()
+        guard let document else { return }
+        do {
+            _ = try engine.dispatch("document.close", ["document": String(document.id)])
+            self.document = nil
+            closed = true
+            errorMessage = nil
+        } catch {
+            // The engine refuses only an unknown document, so this is not
+            // expected; the window is closing, so nobody sees the message.
+            errorMessage = error.localizedDescription
+        }
     }
 
     /// Asks the engine to replace `range`, counted in UTF-16 code units of

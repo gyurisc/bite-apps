@@ -1,4 +1,5 @@
 import Foundation
+import Observation
 
 /// What the engine reports about a document after a command.
 struct DocumentState: Equatable {
@@ -19,9 +20,15 @@ struct EngineError: LocalizedError {
 }
 
 /// Owns one Rust engine and sends it commands through the C interface
-/// declared in `crates/bite-ffi/include/bite_ffi.h`.
+/// declared in `crates/bite-ffi/include/bite_ffi.h`. The app has one, and
+/// each window's document lives in it.
+@Observable
 final class EngineBridge {
-    private let engine = bite_engine_new()
+    @ObservationIgnored private let engine = bite_engine_new()
+
+    /// The documents the engine's replies have shown open and not yet
+    /// closed. The app shows how many to UI tests.
+    private(set) var openDocuments: Set<UInt64> = []
 
     deinit {
         bite_engine_free(engine)
@@ -60,6 +67,11 @@ final class EngineBridge {
         )
         guard reply.ok else {
             throw EngineError(message: text)
+        }
+        if command == "document.close" {
+            openDocuments.remove(reply.document)
+        } else if !openDocuments.contains(reply.document) {
+            openDocuments.insert(reply.document)
         }
         return DocumentState(
             id: reply.document,

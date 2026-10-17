@@ -45,16 +45,20 @@ struct DocumentEditor: NSViewRepresentable {
             guard let coordinator, let textView else { return }
             coordinator.runHistory(command, in: textView)
         }
+        coordinator.model.finishEditing = { [weak textView] in textView?.endComposition() }
+        textView.windowWillClose = { [weak coordinator] in coordinator?.model.close() }
     }
 
     func updateNSView(_ scrollView: NSScrollView, context: Context) {
-        context.coordinator.model = model
         guard let textView = scrollView.documentView as? NSTextView else { return }
-        context.coordinator.show(model.document?.text ?? "", in: textView)
+        context.coordinator.show(context.coordinator.model.document?.text ?? "", in: textView)
     }
 
     final class Coordinator: NSObject, NSTextViewDelegate {
-        var model: DocumentModel
+        /// The window's model. A window keeps its model, so an editor stays
+        /// connected to the model it was made with, which closes with the
+        /// window.
+        let model: DocumentModel
 
         /// True from the engine accepting an edit until the view has applied
         /// it. The engine's text is ahead of the view's then, so it must not

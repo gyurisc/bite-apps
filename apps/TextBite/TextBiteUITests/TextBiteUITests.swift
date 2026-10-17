@@ -134,7 +134,57 @@ final class TextBiteUITests: XCTestCase {
         assertEngineAndEditorShow("doc", editor)
     }
 
+    @MainActor
+    func testEachWindowEditsItsOwnDocumentAndClosingOneClosesIt() throws {
+        let editor = launchEditor()
+        editor.typeText("first")
+        let firstWindow = app.windows.element(boundBy: 0)
+        assertOpenDocuments(1)
+
+        app.typeKey("n", modifierFlags: .command)
+        XCTAssertTrue(waitUntil { self.app.windows.count == 2 })
+        assertOpenDocuments(2)
+        // The new window is in front.
+        let secondWindow = app.windows.element(boundBy: 0)
+        let secondEditor = secondWindow.textViews["editor"]
+        secondEditor.click()
+        secondEditor.typeText("second")
+        assertEngineAndEditorShow("second", secondEditor, in: secondWindow)
+
+        app.typeKey("w", modifierFlags: .command)
+        XCTAssertTrue(waitUntil { self.app.windows.count == 1 })
+        assertOpenDocuments(1)
+
+        let firstEditor = firstWindow.textViews["editor"]
+        firstEditor.click()
+        firstEditor.typeKey(.downArrow, modifierFlags: .command)
+        firstEditor.typeText("!")
+        assertEngineAndEditorShow("first!", firstEditor, in: firstWindow)
+    }
+
     // MARK: - Helpers
+
+    /// Checks how many documents the app's engine holds, as every window
+    /// shows it to UI tests.
+    @MainActor
+    private func assertOpenDocuments(_ count: Int, file: StaticString = #filePath, line: UInt = #line) {
+        let expected = "\(count) open"
+        let shown = app.windows.element(boundBy: 0).staticTexts["open-documents"]
+        XCTAssertTrue(
+            waitUntil { (shown.label.isEmpty ? shown.value as? String : shown.label) == expected },
+            "open documents: \(shown.label) \(shown.value ?? ""), not \(expected)", file: file, line: line)
+    }
+
+    /// Polls `condition` for up to five seconds.
+    @MainActor
+    private func waitUntil(_ condition: () -> Bool) -> Bool {
+        let deadline = Date().addingTimeInterval(5)
+        repeat {
+            if condition() { return true }
+            RunLoop.current.run(until: Date().addingTimeInterval(0.1))
+        } while Date() < deadline
+        return false
+    }
 
     /// Opens the Edit menu, which makes AppKit validate its items, checks
     /// whether Undo and Redo are enabled, and closes it again. Escape would
@@ -188,7 +238,8 @@ final class TextBiteUITests: XCTestCase {
     /// precomposed and a decomposed letter as equal.
     @MainActor
     private func assertEngineAndEditorShow(
-        _ expected: String, _ editor: XCUIElement, file: StaticString = #filePath, line: UInt = #line
+        _ expected: String, _ editor: XCUIElement, in window: XCUIElement? = nil,
+        file: StaticString = #filePath, line: UInt = #line
     ) {
         let bytes = Array(expected.utf8)
         XCTAssertEqual(
@@ -196,7 +247,7 @@ final class TextBiteUITests: XCTestCase {
 
         // SwiftUI leaves an empty text out of the accessibility tree, so a
         // missing element means the engine's text is empty.
-        let engineText = app.descendants(matching: .any)["engine-text"]
+        let engineText = (window ?? app).descendants(matching: .any)["engine-text"]
         var shown = ""
         let deadline = Date().addingTimeInterval(5)
         repeat {

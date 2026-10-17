@@ -41,5 +41,6 @@ Build clean-room, local-first macOS reimplementations of familiar stock Apple ap
 - Keep pull requests and commits focused on one user-visible behavior or one foundation task.
 - Run `scripts/check.sh` for Rust changes. It runs `cargo fmt --all -- --check`, `cargo clippy --workspace --all-targets -- -D warnings`, and `cargo test --workspace`.
 - For UI changes, add or update a UI test in `apps/TextBite/TextBiteUITests` for the behavior, or a unit test in `apps/TextBite/TextBiteTests` for logic a UI test cannot reach, and run `scripts/check.sh --ui`. Where macOS Automation Mode is not enabled, run `scripts/check.sh --app` and rely on CI to run the UI tests. Report what was verified by hand, by UI test, or not at all; the maintainer checks the app by hand at each milestone.
+- In the app target, classes are main-actor by default. Give a plain Swift class (not an `NSObject` subclass) an explicit `deinit` or `nonisolated deinit {}`; an implicit deinit is isolated, and releasing such an object in a unit test crashes on macOS 15.
 - Do not claim parity with an Apple app unless a specific, tested behavior supports the claim.
 - Do not add App Store packaging, release signing, Windows, sync, or monetization work unless the roadmap is explicitly changed.
