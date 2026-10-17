@@ -10,7 +10,7 @@ When a change is complete and its checks pass, run the `critic` agent (`.claude/
 
 ## Working through the roadmap
 
-The next work is the first unchecked item in the current milestone's task list in `ROADMAP.md`. "Continue" means that item. Check `gh pr list` and the branches first, since earlier work may be open or merged.
+The next work is the first unchecked item in the current milestone's task list in `ROADMAP.md`, skipping items that start with "Maintainer:", which only the maintainer can do. "Continue" means that item. Check `gh pr list` and the branches first, since earlier work may be open or merged.
 
 Standing permission, so the work does not wait on routine questions:
 

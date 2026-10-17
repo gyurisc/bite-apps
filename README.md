@@ -38,7 +38,7 @@ The Rust-to-Swift bridge is a small hand-written C interface in `crates/bite-ffi
 ```text
 bite-apps/
 ├── apps/
-│   └── TextBite/             # native macOS SwiftUI app and its UI tests
+│   └── TextBite/             # native macOS SwiftUI app, its unit tests, and its UI tests
 ├── crates/
 │   ├── bite-engine/          # headless document model and commands
 │   ├── bite-ffi/             # C interface used by the SwiftUI app
@@ -62,8 +62,8 @@ From the repository root:
 cargo check --workspace
 cargo test --workspace
 scripts/check.sh          # formatting, Clippy, and tests, as CI runs them
-scripts/check.sh --app    # also builds the app and its UI tests
-scripts/check.sh --ui     # also runs the UI tests
+scripts/check.sh --app    # also builds the app and its unit and UI tests
+scripts/check.sh --ui     # also runs the app's unit and UI tests
 ```
 
 UI tests drive the app through macOS Automation Mode, which asks for a password the first time it is needed. To let them run unattended, enable it once with `sudo automationmodetool enable-automationmode-without-authentication`, and turn it back off with `sudo automationmodetool disable-automationmode-without-authentication`.

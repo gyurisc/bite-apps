@@ -1,10 +1,11 @@
 import AppKit
 import SwiftUI
 
-/// A plain-text `NSTextView` that shows the engine's text and lets an edit
-/// through only after the engine has applied the same edit, as ADR 0004
-/// describes. The text view's own undo is off: ⌘Z must not change the view
-/// without the engine.
+/// A plain-text `EditorTextView` that shows the engine's text and lets an
+/// edit through only after the engine has applied the same edit, as ADR 0004
+/// describes. Input-method compositions reach the engine when they end, as
+/// ADR 0005 describes. The text view's own undo is off: ⌘Z must not change
+/// the view without the engine.
 struct DocumentEditor: NSViewRepresentable {
     let model: DocumentModel
 
@@ -13,17 +14,30 @@ struct DocumentEditor: NSViewRepresentable {
     }
 
     func makeNSView(context: Context) -> NSScrollView {
-        let scrollView = NSTextView.scrollableTextView()
-        let textView = scrollView.documentView as! NSTextView
+        let scrollView = EditorTextView.scrollableTextView()
+        let textView = scrollView.documentView as! EditorTextView
         textView.isRichText = false
         textView.importsGraphics = false
         textView.allowsUndo = false
         textView.font = .monospacedSystemFont(ofSize: NSFont.systemFontSize, weight: .regular)
         textView.textContainerInset = NSSize(width: 4, height: 6)
-        textView.string = model.document?.text ?? ""
-        textView.delegate = context.coordinator
         textView.setAccessibilityIdentifier("editor")
+        Self.connect(textView, to: context.coordinator)
         return scrollView
+    }
+
+    /// Shows the model's text in `textView` and routes its edits and
+    /// compositions through `coordinator` to the engine.
+    static func connect(_ textView: EditorTextView, to coordinator: Coordinator) {
+        textView.string = coordinator.model.document?.text ?? ""
+        textView.delegate = coordinator
+        textView.commit = { [weak coordinator] range, text in
+            coordinator?.model.replace(range, with: text) ?? false
+        }
+        textView.restore = { [weak coordinator, weak textView] in
+            guard let coordinator, let textView else { return }
+            coordinator.show(coordinator.model.document?.text ?? "", in: textView)
+        }
     }
 
     func updateNSView(_ scrollView: NSScrollView, context: Context) {
@@ -55,8 +69,10 @@ struct DocumentEditor: NSViewRepresentable {
             shouldChangeTextInRanges ranges: [NSValue],
             replacementStrings: [String]?
         ) -> Bool {
-            // A change to attributes only does not touch the text.
+            // A change to attributes only does not touch the text, and the
+            // view sends compositions to the engine itself.
             guard let replacementStrings else { return true }
+            if (textView as? EditorTextView)?.letsChangesThrough == true { return true }
             let accepted = send(ranges.map(\.rangeValue), replacementStrings, from: textView.string)
             if accepted {
                 applyingEdit = true
@@ -93,7 +109,10 @@ struct DocumentEditor: NSViewRepresentable {
         /// unit by code unit: text that only looks the same has different
         /// offsets.
         func show(_ text: String, in textView: NSTextView) {
-            guard !applyingEdit, !(textView.string as NSString).isEqual(to: text) else { return }
+            // During a composition the view is ahead of the engine on purpose.
+            guard !applyingEdit, (textView as? EditorTextView)?.letsChangesThrough != true,
+                !(textView.string as NSString).isEqual(to: text)
+            else { return }
             let selection = textView.selectedRange()
             textView.string = text
             let length = (text as NSString).length

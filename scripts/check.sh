@@ -2,9 +2,9 @@
 # Runs the checks AGENTS.md asks for, from any directory.
 #
 #   scripts/check.sh          Rust: formatting, Clippy, tests
-#   scripts/check.sh --app    also builds the app and its UI tests
-#   scripts/check.sh --ui     also runs the UI tests, which needs macOS
-#                             Automation Mode (see README.md)
+#   scripts/check.sh --app    also builds the app and its unit and UI tests
+#   scripts/check.sh --ui     also runs the app's unit and UI tests; UI
+#                             tests need macOS Automation Mode (README.md)
 set -eu
 
 cd "$(dirname "$0")/.."

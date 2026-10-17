@@ -32,6 +32,16 @@
             skipped = "NO">
             <BuildableReference
                BuildableIdentifier = "primary"
+               BlueprintIdentifier = "28E18A85307E1DF40015DCD0"
+               BuildableName = "TextBiteTests.xctest"
+               BlueprintName = "TextBiteTests"
+               ReferencedContainer = "container:TextBite.xcodeproj">
+            </BuildableReference>
+         </TestableReference>
+         <TestableReference
+            skipped = "NO">
+            <BuildableReference
+               BuildableIdentifier = "primary"
                BlueprintIdentifier = "28E18A75307E1DF40015DCD0"
                BuildableName = "TextBiteUITests.xctest"
                BlueprintName = "TextBiteUITests"
