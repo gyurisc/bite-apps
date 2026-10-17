@@ -8,6 +8,7 @@
 //! document text may contain NUL bytes. Bad input produces a failed reply.
 
 use bite_engine::{Engine, Outcome};
+use std::ops::Range;
 use std::{ptr, slice, str};
 
 /// An engine instance, opaque to C. Use it from one thread at a time.
@@ -53,46 +54,83 @@ pub struct BiteReply {
     pub ok: bool,
     pub can_undo: bool,
     pub can_redo: bool,
+    /// Whether the command changed the text. False for errors and for
+    /// `document.close`.
+    pub changed: bool,
     /// The affected document's ID when `ok`, otherwise 0.
     pub document: u64,
     /// UTF-8: the document text when `ok`, otherwise an error message. Empty
     /// after `document.close`, which also reports no undo or redo.
     pub text: *mut u8,
     pub text_len: usize,
+    /// When `changed`, the byte range of `text` that differs from the text
+    /// before the command; an empty range marks where text was removed.
+    /// Otherwise both 0.
+    pub changed_start: usize,
+    pub changed_end: usize,
 }
 
+// The layout `include/bite_ffi.h` declares. Update both together.
+const _: () = {
+    use std::mem::{offset_of, size_of};
+    assert!(size_of::<BiteReply>() == 48);
+    assert!(offset_of!(BiteReply, ok) == 0);
+    assert!(offset_of!(BiteReply, can_undo) == 1);
+    assert!(offset_of!(BiteReply, can_redo) == 2);
+    assert!(offset_of!(BiteReply, changed) == 3);
+    assert!(offset_of!(BiteReply, document) == 8);
+    assert!(offset_of!(BiteReply, text) == 16);
+    assert!(offset_of!(BiteReply, text_len) == 24);
+    assert!(offset_of!(BiteReply, changed_start) == 32);
+    assert!(offset_of!(BiteReply, changed_end) == 40);
+};
+
 impl BiteReply {
-    fn new(ok: bool, document: u64, can_undo: bool, can_redo: bool, text: &str) -> Self {
+    fn new(
+        ok: bool,
+        document: u64,
+        can_undo: bool,
+        can_redo: bool,
+        changed: Option<Range<usize>>,
+        text: &str,
+    ) -> Self {
         let bytes: Box<[u8]> = text.as_bytes().into();
         let text_len = bytes.len();
         let text = Box::into_raw(bytes).cast::<u8>();
+        let (changed_start, changed_end) = changed
+            .as_ref()
+            .map_or((0, 0), |range| (range.start, range.end));
         Self {
             ok,
             can_undo,
             can_redo,
+            changed: changed.is_some(),
             document,
             text,
             text_len,
+            changed_start,
+            changed_end,
         }
     }
 
-    /// A closed document replies with its ID, empty text, and no undo or
-    /// redo, as ADR 0004 records.
+    /// A closed document replies with its ID, empty text, no undo or redo,
+    /// and no change, as ADRs 0004 and 0005 record.
     fn outcome(outcome: Outcome) -> Self {
         match outcome {
-            Outcome::Document(document) => Self::new(
+            Outcome::Document { document, changed } => Self::new(
                 true,
                 document.id().into(),
                 document.can_undo(),
                 document.can_redo(),
+                changed,
                 document.text(),
             ),
-            Outcome::Closed(id) => Self::new(true, id.into(), false, false, ""),
+            Outcome::Closed(id) => Self::new(true, id.into(), false, false, None, ""),
         }
     }
 
     fn error(message: &str) -> Self {
-        Self::new(false, 0, false, false, message)
+        Self::new(false, 0, false, false, None, message)
     }
 }
 

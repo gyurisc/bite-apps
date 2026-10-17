@@ -25,9 +25,13 @@ struct Outcome {
     text: String,
     can_undo: bool,
     can_redo: bool,
+    changed: Option<(usize, usize)>,
 }
 
 fn take(reply: BiteReply) -> Outcome {
+    if !reply.changed {
+        assert_eq!((reply.changed_start, reply.changed_end), (0, 0));
+    }
     let text = unsafe { std::slice::from_raw_parts(reply.text, reply.text_len) };
     let outcome = Outcome {
         ok: reply.ok,
@@ -35,6 +39,9 @@ fn take(reply: BiteReply) -> Outcome {
         text: String::from_utf8(text.to_vec()).unwrap(),
         can_undo: reply.can_undo,
         can_redo: reply.can_redo,
+        changed: reply
+            .changed
+            .then_some((reply.changed_start, reply.changed_end)),
     };
     unsafe { bite_reply_free(reply) };
     outcome
@@ -74,6 +81,7 @@ fn create_replies_with_an_empty_document() {
             text: String::new(),
             can_undo: false,
             can_redo: false,
+            changed: Some((0, 0)),
         }
     );
     unsafe { bite_engine_free(engine) };
@@ -177,10 +185,36 @@ fn close_replies_with_the_closed_id_and_later_commands_fail() {
                 text: String::new(),
                 can_undo: false,
                 can_redo: false,
+                changed: None,
             }
         );
         assert!(!after.ok);
         assert!(after.text.contains(id), "{}", after.text);
+    });
+}
+
+#[test]
+fn replies_report_the_changed_byte_range() {
+    with_document(|engine, id| {
+        dispatch(
+            engine,
+            "document.replace_text",
+            &[("document", id), ("text", "caf\u{e9} au lait")],
+        );
+
+        let edited = dispatch(
+            engine,
+            "document.replace_text",
+            &[("document", id), ("text", "caf\u{e8} au lait")],
+        );
+        let undone = dispatch(engine, "document.undo", &[("document", id)]);
+        let failed = dispatch(engine, "document.redo", &[("document", "99")]);
+
+        // "é" and "è" share their first byte; the range covers the whole letter.
+        assert_eq!(edited.changed, Some((3, 5)));
+        assert_eq!(undone.changed, Some((3, 5)));
+        assert!(!failed.ok);
+        assert_eq!(failed.changed, None);
     });
 }
 

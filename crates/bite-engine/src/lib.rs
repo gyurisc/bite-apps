@@ -41,6 +41,17 @@
 //! affect grouping. Grouping depends only on the order of edits, never on
 //! timing; `docs/architecture/0004-edit-model.md` records why.
 //!
+//! # Changed range
+//!
+//! [`Outcome::changed`] reports the byte range of the new text that differs
+//! from the text before the command, or `None` if the text did not change.
+//! The bytes both texts share at the start are left out, back to the last
+//! whole Unicode scalar value; then the bytes they share at the end of what
+//! remains, forward to the next whole one. An empty range marks where text was only removed;
+//! a created or loaded document reports its whole text. Hosts use the range
+//! to update a view and select what undo or redo restored, as
+//! `docs/architecture/0005-composition-and-changed-range.md` records.
+//!
 //! # Loading and saving
 //!
 //! The engine never touches files. To open one, a host reads its bytes,
@@ -68,6 +79,7 @@
 use std::collections::BTreeMap;
 use std::fmt;
 use std::num::ParseIntError;
+use std::ops::Range;
 use std::str::FromStr;
 
 /// The stable string IDs commands are dispatched under.
@@ -332,26 +344,34 @@ impl Document {
     }
 
     /// Replacing the text with identical text is not a change: it records no
-    /// undo step and keeps the redo history.
-    fn replace_text(&mut self, text: String) {
+    /// undo step and keeps the redo history. Returns the changed range.
+    fn replace_text(&mut self, text: String) -> Option<Range<usize>> {
         if text == self.text {
-            return;
+            return None;
         }
         let previous = std::mem::replace(&mut self.text, text);
+        let changed = changed_range(&previous, &self.text);
         self.undo_stack.push(previous);
         self.redo_stack.clear();
         self.open_step = None;
+        changed
     }
 
     /// Replaces the bytes `start..end`. An insertion that continues typing,
     /// or a deletion that continues Backspace or Forward Delete, joins the
     /// previous range edit's undo step; anything else starts a new one.
-    /// Replacing a range with identical text is not a change.
-    fn replace_range(&mut self, start: usize, end: usize, text: String) -> Result<(), EngineError> {
+    /// Replacing a range with identical text is not a change. Returns the
+    /// changed range, found by comparing only the replaced bytes.
+    fn replace_range(
+        &mut self,
+        start: usize,
+        end: usize,
+        text: String,
+    ) -> Result<Option<Range<usize>>, EngineError> {
         self.check_range(start, end)?;
-        if self.text[start..end] == text {
-            return Ok(());
-        }
+        let Some(changed) = changed_range(&self.text[start..end], &text) else {
+            return Ok(None);
+        };
         let inserts = !text.is_empty();
         let deletes = start < end;
         let joins = match (self.open_step, deletes, inserts) {
@@ -371,7 +391,7 @@ impl Document {
         } else {
             OpenStep::Deleting { at: start }
         });
-        Ok(())
+        Ok(Some(start + changed.start..start + changed.end))
     }
 
     fn check_range(&self, start: usize, end: usize) -> Result<(), EngineError> {
@@ -404,26 +424,30 @@ impl Document {
         Ok(())
     }
 
-    fn undo(&mut self) -> Result<(), EngineError> {
+    /// Returns the changed range.
+    fn undo(&mut self) -> Result<Option<Range<usize>>, EngineError> {
         let previous = self
             .undo_stack
             .pop()
             .ok_or(EngineError::NothingToUndo(self.id))?;
         let undone = std::mem::replace(&mut self.text, previous);
+        let changed = changed_range(&undone, &self.text);
         self.redo_stack.push(undone);
         self.open_step = None;
-        Ok(())
+        Ok(changed)
     }
 
-    fn redo(&mut self) -> Result<(), EngineError> {
+    /// Returns the changed range.
+    fn redo(&mut self) -> Result<Option<Range<usize>>, EngineError> {
         let next = self
             .redo_stack
             .pop()
             .ok_or(EngineError::NothingToRedo(self.id))?;
         let current = std::mem::replace(&mut self.text, next);
+        let changed = changed_range(&current, &self.text);
         self.undo_stack.push(current);
         self.open_step = None;
-        Ok(())
+        Ok(changed)
     }
 }
 
@@ -573,27 +597,71 @@ pub fn text_from_utf8(bytes: &[u8]) -> Result<&str, EngineError> {
 
 /// What a command left behind: the document it created or changed, or the
 /// ID of the document it closed.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Outcome<'a> {
-    Document(&'a Document),
+    Document {
+        document: &'a Document,
+        /// The byte range of the new text that differs from the text
+        /// before the command, or `None` if the text did not change.
+        changed: Option<Range<usize>>,
+    },
     Closed(DocumentId),
 }
 
 impl<'a> Outcome<'a> {
     /// The document, unless the command closed it.
-    pub fn document(self) -> Option<&'a Document> {
+    pub fn document(&self) -> Option<&'a Document> {
         match self {
-            Self::Document(document) => Some(document),
+            Self::Document { document, .. } => Some(document),
             Self::Closed(_) => None,
         }
     }
 
-    pub fn id(self) -> DocumentId {
+    pub fn id(&self) -> DocumentId {
         match self {
-            Self::Document(document) => document.id(),
-            Self::Closed(id) => id,
+            Self::Document { document, .. } => document.id(),
+            Self::Closed(id) => *id,
         }
     }
+
+    /// The byte range of the new text that the command changed. `None` when
+    /// the text did not change or the document was closed.
+    pub fn changed(&self) -> Option<Range<usize>> {
+        match self {
+            Self::Document { changed, .. } => changed.clone(),
+            Self::Closed(_) => None,
+        }
+    }
+}
+
+/// The byte range of `new` that differs from `old`, or `None` if they are
+/// equal. The bytes the texts share at the start are left out, moved back to
+/// a boundary between Unicode scalar values; then the bytes they share at
+/// the end of what remains, moved forward to a boundary. Because the
+/// left-out bytes are shared, those boundaries are the same in both texts.
+fn changed_range(old: &str, new: &str) -> Option<Range<usize>> {
+    if old == new {
+        return None;
+    }
+    let (old, new_bytes) = (old.as_bytes(), new.as_bytes());
+    let mut prefix = old
+        .iter()
+        .zip(new_bytes)
+        .take_while(|(a, b)| a == b)
+        .count();
+    while !new.is_char_boundary(prefix) {
+        prefix -= 1;
+    }
+    let mut suffix = old[prefix..]
+        .iter()
+        .rev()
+        .zip(new_bytes[prefix..].iter().rev())
+        .take_while(|(a, b)| a == b)
+        .count();
+    while !new.is_char_boundary(new.len() - suffix) {
+        suffix -= 1;
+    }
+    Some(prefix..new.len() - suffix)
 }
 
 /// Owns every open document and applies commands to them.
@@ -620,13 +688,13 @@ impl Engine {
     /// Applies `command` and returns the document it affected, or the ID of
     /// the document it closed.
     pub fn execute(&mut self, command: Command) -> Result<Outcome<'_>, EngineError> {
-        let document = match command {
+        let (document, changed) = match command {
             Command::CreateDocument => self.add_document(String::new()),
             Command::LoadDocument { text } => self.add_document(text),
             Command::ReplaceText { document, text } => {
                 let document = self.document_mut(document)?;
-                document.replace_text(text);
-                document
+                let changed = document.replace_text(text);
+                (document, changed)
             }
             Command::ReplaceRange {
                 document,
@@ -635,18 +703,18 @@ impl Engine {
                 text,
             } => {
                 let document = self.document_mut(document)?;
-                document.replace_range(start, end, text)?;
-                document
+                let changed = document.replace_range(start, end, text)?;
+                (document, changed)
             }
             Command::Undo { document } => {
                 let document = self.document_mut(document)?;
-                document.undo()?;
-                document
+                let changed = document.undo()?;
+                (document, changed)
             }
             Command::Redo { document } => {
                 let document = self.document_mut(document)?;
-                document.redo()?;
-                document
+                let changed = document.redo()?;
+                (document, changed)
             }
             Command::Close { document } => {
                 self.documents
@@ -655,17 +723,20 @@ impl Engine {
                 return Ok(Outcome::Closed(document));
             }
         };
-        Ok(Outcome::Document(document))
+        Ok(Outcome::Document { document, changed })
     }
 
     pub fn document(&self, id: DocumentId) -> Option<&Document> {
         self.documents.get(&id)
     }
 
-    fn add_document(&mut self, text: String) -> &mut Document {
+    /// A new document reports its whole text as changed.
+    fn add_document(&mut self, text: String) -> (&mut Document, Option<Range<usize>>) {
         self.last_id += 1;
         let id = DocumentId(self.last_id);
-        self.documents.entry(id).or_insert(Document::new(id, text))
+        let changed = Some(0..text.len());
+        let document = self.documents.entry(id).or_insert(Document::new(id, text));
+        (document, changed)
     }
 
     fn document_mut(&mut self, id: DocumentId) -> Result<&mut Document, EngineError> {
