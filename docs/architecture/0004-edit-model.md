@@ -1,6 +1,6 @@
 # ADR 0004: Range edits, byte offsets, and engine-owned undo
 
-- Status: accepted for the first slice
+- Status: accepted for the first slice; ADR 0005 settles the two questions it leaves to M5, composed input and the selection after undo and redo.
 - Date: 2026-10-17
 
 ## Context
