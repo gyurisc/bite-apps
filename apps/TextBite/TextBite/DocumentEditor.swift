@@ -4,8 +4,8 @@ import SwiftUI
 /// A plain-text `EditorTextView` that shows the engine's text and lets an
 /// edit through only after the engine has applied the same edit, as ADR 0004
 /// describes. Input-method compositions reach the engine when they end, as
-/// ADR 0005 describes. The text view's own undo is off: ⌘Z must not change
-/// the view without the engine.
+/// ADR 0005 describes. The text view's own undo is off: Undo and Redo run
+/// the engine's, so the view never changes without the engine.
 struct DocumentEditor: NSViewRepresentable {
     let model: DocumentModel
 
@@ -37,6 +37,13 @@ struct DocumentEditor: NSViewRepresentable {
         textView.restore = { [weak coordinator, weak textView] in
             guard let coordinator, let textView else { return }
             coordinator.show(coordinator.model.document?.text ?? "", in: textView)
+        }
+        textView.canRunHistory = { [weak coordinator] command in
+            coordinator?.model.canRunHistory(command) ?? false
+        }
+        textView.runHistory = { [weak coordinator, weak textView] command in
+            guard let coordinator, let textView else { return }
+            coordinator.runHistory(command, in: textView)
         }
     }
 
@@ -94,6 +101,24 @@ struct DocumentEditor: NSViewRepresentable {
                 text.replaceCharacters(in: range, with: replacement)
             }
             return model.replaceText(with: text as String)
+        }
+
+        /// Undoes or redoes a step in the engine, then replaces only the
+        /// changed span of the view's text, selects it and scrolls to it, as
+        /// ADR 0005 describes. If nothing changed, the selection stays.
+        func runHistory(_ command: HistoryCommand, in textView: NSTextView) {
+            // The change is worked out from the engine's text, so it fits the
+            // view only if the view showed that text.
+            let inStep = (textView.string as NSString).isEqual(to: model.document?.text ?? "")
+            if let change = model.runHistory(command), inStep, let storage = textView.textStorage {
+                storage.replaceCharacters(
+                    in: change.replaced,
+                    with: NSAttributedString(string: change.text, attributes: textView.typingAttributes))
+                textView.setSelectedRange(change.changed)
+                textView.scrollRangeToVisible(change.changed)
+            }
+            // The engine's text wins if the edit did not make the two agree.
+            show(model.document?.text ?? "", in: textView)
         }
 
         /// After the view applies an edit, its text must be the engine's.

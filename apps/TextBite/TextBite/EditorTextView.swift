@@ -14,6 +14,10 @@ final class EditorTextView: NSTextView {
     var commit: (NSRange, String) -> Bool = { _, _ in true }
     /// Shows the engine's text if the view's text differs from it.
     var restore: () -> Void = {}
+    /// Whether the engine can undo or redo now.
+    var canRunHistory: (HistoryCommand) -> Bool = { _ in false }
+    /// Undoes or redoes a step in the engine and shows the result.
+    var runHistory: (HistoryCommand) -> Void = { _ in }
 
     /// The composition in progress: where its region starts, how many code
     /// units follow it, and how long the engine's text was when it began.
@@ -89,6 +93,37 @@ final class EditorTextView: NSTextView {
             unmarkText()
         }
         endIfUnmarked()
+    }
+
+    /// Undo and Redo while this view has focus: the engine owns the
+    /// document's history, as ADR 0004 describes. They are not offered
+    /// during a composition, whose text the engine has not seen yet.
+    @objc func undo(_ sender: Any?) {
+        if offers(.undo) { runHistory(.undo) }
+    }
+
+    @objc func redo(_ sender: Any?) {
+        if offers(.redo) { runHistory(.redo) }
+    }
+
+    /// Menus validate through this too: `NSTextView` passes menu items on.
+    override func validateUserInterfaceItem(_ item: any NSValidatedUserInterfaceItem) -> Bool {
+        guard let command = Self.historyCommand(item.action) else { return super.validateUserInterfaceItem(item) }
+        // Another field's undo may have named the item after its own step.
+        (item as? NSMenuItem)?.title = command == .undo ? "Undo" : "Redo"
+        return offers(command)
+    }
+
+    private func offers(_ command: HistoryCommand) -> Bool {
+        !isComposing && canRunHistory(command)
+    }
+
+    private static func historyCommand(_ action: Selector?) -> HistoryCommand? {
+        switch action {
+        case #selector(undo(_:)): .undo
+        case #selector(redo(_:)): .redo
+        default: nil
+        }
     }
 
     private func inputMethodCall(_ call: () -> Void) {

@@ -71,7 +71,7 @@ The engine sees only the edits, not the keys or the selection behind them. Group
 
 ### Ownership of undo
 
-The engine owns undo. The app turns off the text view's own undo and replaces the Undo and Redo menu commands with ones that dispatch `document.undo` and `document.redo` when the document's text view has focus, enabled from the reply's undo and redo availability. Other fields, such as a find field, keep their own undo. After an undo or redo, the app shows the reply's text.
+The engine owns undo. The app turns off the text view's own undo and replaces the Undo and Redo menu commands with ones that dispatch `document.undo` and `document.redo` when the document's text view has focus, enabled from the reply's undo and redo availability. Other fields, such as a find field, keep their own undo. After an undo or redo, the app shows the reply's text. M5 keeps the standard Undo and Redo menu items: the document's text view answers their actions while it has focus, and other fields answer them as usual.
 
 ### `document.close`
 

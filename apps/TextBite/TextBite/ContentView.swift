@@ -9,6 +9,9 @@ import SwiftUI
 
 struct ContentView: View {
     @State private var model = DocumentModel()
+    /// A field outside the document, shown only to UI tests, which check
+    /// that it keeps its own undo.
+    @State private var scratch = ""
 
     /// UI tests launch the app with this argument to see the engine's text.
     private let showsEngineText = ProcessInfo.processInfo.arguments.contains("--ui-testing")
@@ -26,6 +29,9 @@ struct ContentView: View {
                 Text(model.document?.text ?? "")
                     .accessibilityIdentifier("engine-text")
                     .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(6)
+                TextField("Scratch", text: $scratch)
+                    .accessibilityIdentifier("scratch-field")
                     .padding(6)
             }
         }
