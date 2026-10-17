@@ -48,6 +48,25 @@ fn names(dir: &Path) -> Vec<String> {
     names
 }
 
+/// Runs a system tool the test needs and returns its standard output.
+fn tool(program: &str, args: &[&str]) -> String {
+    let output = Command::new(program).args(args).output().unwrap();
+    assert!(output.status.success(), "{program} {args:?}: {output:?}");
+    String::from_utf8(output.stdout).unwrap()
+}
+
+/// Root ignores permission bits, so tests that rely on them cannot run as root.
+fn running_as_root(dir: &Path) -> bool {
+    let probe = dir.join("owner-probe");
+    fs::write(&probe, "").unwrap();
+    let root = fs::metadata(&probe).unwrap().uid() == 0;
+    fs::remove_file(&probe).unwrap();
+    if root {
+        eprintln!("skipped: permission bits do not apply to root");
+    }
+    root
+}
+
 #[test]
 fn a_missing_file_is_created_empty() {
     let dir = scratch("missing_file_created");
@@ -80,6 +99,7 @@ fn commands_are_applied_to_an_existing_file_and_saved() {
     let dir = scratch("existing_file_edited");
     let file = dir.join("notes.txt");
     fs::write(&file, "old text\n").unwrap();
+    let inode = fs::metadata(&file).unwrap().ino();
 
     let output = bite(&[
         path_arg(&file),
@@ -91,6 +111,8 @@ fn commands_are_applied_to_an_existing_file_and_saved() {
     assert!(output.stdout.is_empty());
     assert_eq!(fs::read(&file).unwrap(), b"key = value\r\n");
     assert_eq!(names(&dir), ["notes.txt"]);
+    // A new inode shows the file was replaced whole, not rewritten in place.
+    assert_ne!(fs::metadata(&file).unwrap().ino(), inode);
 }
 
 #[test]
@@ -233,6 +255,9 @@ fn a_directory_is_not_opened() {
 #[test]
 fn a_failed_save_keeps_the_file_and_leaves_no_temporary_file() {
     let dir = scratch("failed_save");
+    if running_as_root(&dir) {
+        return;
+    }
     let file = dir.join("notes.txt");
     fs::write(&file, "keep me").unwrap();
     fs::set_permissions(&dir, fs::Permissions::from_mode(0o555)).unwrap();
@@ -251,6 +276,9 @@ fn a_failed_save_keeps_the_file_and_leaves_no_temporary_file() {
 #[test]
 fn a_read_only_file_is_not_replaced() {
     let dir = scratch("read_only_file");
+    if running_as_root(&dir) {
+        return;
+    }
     let file = dir.join("notes.txt");
     fs::write(&file, "keep me").unwrap();
     fs::set_permissions(&file, fs::Permissions::from_mode(0o444)).unwrap();
@@ -293,6 +321,67 @@ fn saving_through_a_symbolic_link_updates_the_linked_file() {
 }
 
 #[test]
+fn a_symbolic_link_to_a_missing_file_is_not_replaced() {
+    let dir = scratch("dangling_symlink");
+    let link = dir.join("dangling.txt");
+    symlink("missing.txt", &link).unwrap();
+
+    let output = bite(&[path_arg(&link), "document.replace_text", "text=lost"]);
+
+    assert_eq!(output.status.code(), Some(1));
+    let message = stderr(&output);
+    assert!(message.contains("symbolic link"), "{message}");
+    assert!(message.contains("nothing was saved"), "{message}");
+    assert_eq!(fs::read_link(&link).unwrap(), Path::new("missing.txt"));
+    assert_eq!(names(&dir), ["dangling.txt"]);
+}
+
+#[test]
+fn a_file_with_other_hard_links_is_not_replaced() {
+    let dir = scratch("hard_link");
+    let file = dir.join("a.txt");
+    let other = dir.join("b.txt");
+    fs::write(&file, "keep me").unwrap();
+    fs::hard_link(&file, &other).unwrap();
+
+    let output = bite(&[path_arg(&file), "document.replace_text", "text=lost"]);
+
+    assert_eq!(output.status.code(), Some(1));
+    let message = stderr(&output);
+    assert!(message.contains("hard links"), "{message}");
+    assert!(message.contains("nothing was saved"), "{message}");
+    assert_eq!(fs::read(&file).unwrap(), b"keep me");
+    assert_eq!(fs::metadata(&file).unwrap().nlink(), 2);
+    assert_eq!(names(&dir), ["a.txt", "b.txt"]);
+}
+
+#[test]
+#[cfg(target_os = "macos")]
+fn saving_keeps_finder_tags_other_extended_attributes_and_the_acl() {
+    let dir = scratch("attributes");
+    let file = dir.join("tagged.txt");
+    let path = path_arg(&file);
+    fs::write(&file, "old").unwrap();
+    let tags = "com.apple.metadata:_kMDItemUserTags";
+    tool("xattr", &["-w", tags, "(Red)", path]);
+    tool("xattr", &["-w", "com.example.note", "keep me", path]);
+    tool("chmod", &["+a", "everyone allow read", path]);
+
+    let output = bite(&[path, "document.replace_text", "text=new"]);
+
+    assert!(output.status.success(), "{}", stderr(&output));
+    assert_eq!(fs::read(&file).unwrap(), b"new");
+    assert_eq!(tool("xattr", &["-p", tags, path]), "(Red)\n");
+    assert_eq!(
+        tool("xattr", &["-p", "com.example.note", path]),
+        "keep me\n"
+    );
+    let listing = tool("ls", &["-le", path]);
+    assert!(listing.contains("everyone allow read"), "{listing}");
+    assert_eq!(names(&dir), ["tagged.txt"]);
+}
+
+#[test]
 fn a_malformed_command_line_is_a_usage_error_and_touches_nothing() {
     let dir = scratch("usage_errors");
     let file = dir.join("new.txt");
@@ -301,6 +390,8 @@ fn a_malformed_command_line_is_a_usage_error_and_touches_nothing() {
     for args in [
         vec![],
         vec!["-x"],
+        vec![file, "--frobnicate"],
+        vec![file, "document.undo", "-x"],
         vec![file, "text=before any command"],
         vec![file, "document.replace_text", "document=1", "text=x"],
         vec![file, "document.create"],
@@ -330,4 +421,106 @@ fn help_lists_every_command_that_acts_on_a_document() {
         }
         assert!(help.contains("text=VALUE"), "{help}");
     }
+}
+
+#[test]
+fn help_anywhere_on_the_command_line_prints_help_and_touches_nothing() {
+    let dir = scratch("help_anywhere");
+    let file = dir.join("new.txt");
+    let file = path_arg(&file);
+
+    for args in [
+        vec![file, "--help"],
+        vec![file, "document.undo", "--help"],
+        vec![file, "text=before any command", "--help"],
+        vec![file, "document.create", "-h"],
+        vec![file, "document.undo", "document=1", "--help"],
+    ] {
+        let output = bite(&args);
+
+        assert!(output.status.success(), "{args:?}: {}", stderr(&output));
+        let help = String::from_utf8(output.stdout).unwrap();
+        assert!(help.starts_with("Usage: bite-cli"), "{help}");
+        assert!(names(&dir).is_empty(), "{args:?}");
+    }
+}
+
+#[test]
+fn a_new_file_gets_the_permissions_any_new_file_gets() {
+    let dir = scratch("new_file_mode");
+    let probe = dir.join("probe.txt");
+    fs::write(&probe, "").unwrap();
+    let usual = fs::metadata(&probe).unwrap().mode() & 0o777;
+    let file = dir.join("new.txt");
+
+    let output = bite(&[path_arg(&file), "document.replace_text", "text=new"]);
+
+    assert!(output.status.success(), "{}", stderr(&output));
+    assert_eq!(fs::metadata(&file).unwrap().mode() & 0o777, usual);
+}
+
+#[test]
+fn saving_keeps_the_file_group() {
+    let dir = scratch("group");
+    let file = dir.join("shared.txt");
+    fs::write(&file, "old").unwrap();
+    let folder_group = fs::metadata(&dir).unwrap().gid();
+    let groups = tool("id", &["-G"]);
+    let Some(other) = groups
+        .split_whitespace()
+        .map(|gid| gid.parse::<u32>().unwrap())
+        .find(|gid| *gid != folder_group)
+    else {
+        eprintln!("skipped: the user belongs to no group but the folder's");
+        return;
+    };
+    std::os::unix::fs::chown(&file, None, Some(other)).unwrap();
+
+    let output = bite(&[path_arg(&file), "document.replace_text", "text=new"]);
+
+    assert!(output.status.success(), "{}", stderr(&output));
+    assert_eq!(fs::read(&file).unwrap(), b"new");
+    assert_eq!(fs::metadata(&file).unwrap().gid(), other);
+}
+
+#[test]
+#[cfg(target_os = "macos")]
+fn saving_drops_attributes_macos_drops_when_it_saves_a_document() {
+    let dir = scratch("dropped_attributes");
+    let file = dir.join("notes.txt");
+    let path = path_arg(&file);
+    fs::write(&file, "plain").unwrap();
+    // TextEdit records the encoding it used; it would be stale after a save.
+    tool(
+        "xattr",
+        &["-w", "com.apple.TextEncoding", "macintosh;0", path],
+    );
+
+    let output = bite(&[path, "document.replace_text", "text=caf\u{e9}"]);
+
+    assert!(output.status.success(), "{}", stderr(&output));
+    assert_eq!(fs::read(&file).unwrap(), "caf\u{e9}".as_bytes());
+    let attributes = tool("xattr", &[path]);
+    assert!(!attributes.contains("TextEncoding"), "{attributes}");
+}
+
+#[test]
+#[cfg(target_os = "macos")]
+fn saving_gives_no_access_the_original_did_not_have() {
+    let dir = scratch("inherited_acl");
+    let file = dir.join("notes.txt");
+    let path = path_arg(&file);
+    fs::write(&file, "old").unwrap();
+    // Added after the file was created, so only a new file would inherit it.
+    tool(
+        "chmod",
+        &["+a", "user:daemon allow read,file_inherit", path_arg(&dir)],
+    );
+
+    let output = bite(&[path, "document.replace_text", "text=new"]);
+
+    assert!(output.status.success(), "{}", stderr(&output));
+    assert_eq!(fs::read(&file).unwrap(), b"new");
+    let listing = tool("ls", &["-le", path]);
+    assert!(!listing.contains("daemon"), "{listing}");
 }

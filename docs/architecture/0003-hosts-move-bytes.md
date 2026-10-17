@@ -21,7 +21,7 @@ Hosts move bytes and the engine holds text.
 
 - The engine does not access files. `text_from_utf8` turns file bytes into text and rejects anything that is not UTF-8, reporting the offset of the first invalid byte. The `document.load` command creates a document from that text with no undo history. To save, a host writes the bytes of the document's text.
 - Text is kept exactly as loaded. Line endings and a leading byte-order mark are not normalized, so an unedited document saves back byte for byte.
-- The CLI reads and writes files with the Rust standard library and saves through a temporary file and a rename.
+- The CLI reads and writes files with the Rust standard library and saves through a temporary file and a rename. On macOS it also calls system functions to carry the file's access control list and extended attributes over to the new file.
 - The app keeps the App Sandbox and uses macOS document support to read and write files. Its user-selected file access changes from read-only to read/write in the milestone where the app gains open and save.
 
 ## Consequences

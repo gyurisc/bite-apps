@@ -20,8 +20,11 @@ COMMAND on it in order, and saves the result. bite-cli supplies the
 in the same run.
 
 FILE is saved only if every command succeeds, through a temporary file and a
-rename, and is left untouched if its text ends up unchanged. Only UTF-8
-files can be opened.
+rename, and is left untouched if its text ends up unchanged. Saving keeps
+FILE's mode, group, access control list, and the extended attributes macOS
+keeps when it saves a document, such as Finder tags; not its owner, creation
+date, or flags such as hidden. It refuses a file with other hard links and a
+symbolic link to a missing file. Only UTF-8 files can be opened.
 
 Exit status: 0 on success, 1 if a command or the file fails, 2 for a
 malformed command line.
@@ -78,13 +81,16 @@ fn acts_on_document(spec: &CommandSpec) -> bool {
     spec.params.contains(&"document")
 }
 
-fn parse(mut args: impl Iterator<Item = OsString>) -> Result<Request, String> {
+fn parse(args: impl Iterator<Item = OsString>) -> Result<Request, String> {
+    // A request for help wins over anything else on the command line.
+    let args: Vec<OsString> = args.collect();
+    if args.iter().any(|arg| arg == "-h" || arg == "--help") {
+        return Ok(Request::Help);
+    }
+    let mut args = args.into_iter();
     let Some(path) = args.next() else {
         return Err("missing FILE".to_owned());
     };
-    if path == "-h" || path == "--help" {
-        return Ok(Request::Help);
-    }
     if path.as_encoded_bytes().starts_with(b"-") {
         return Err(format!("unknown option {}", path.to_string_lossy()));
     }
@@ -95,6 +101,9 @@ fn parse(mut args: impl Iterator<Item = OsString>) -> Result<Request, String> {
             .into_string()
             .map_err(|arg| format!("argument {arg:?} is not valid UTF-8"))?;
         let Some((name, value)) = arg.split_once('=') else {
+            if arg.starts_with('-') {
+                return Err(format!("unknown option {arg}"));
+            }
             let spec = COMMANDS.iter().find(|spec| spec.id == arg);
             if spec.is_some_and(|spec| !acts_on_document(spec)) {
                 return Err(format!(
