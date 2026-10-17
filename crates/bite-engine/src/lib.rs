@@ -3,8 +3,9 @@
 //! Every change to a document goes through a command. [`Engine::dispatch`]
 //! takes a command ID and named string parameters, which suits untrusted
 //! callers such as a CLI; [`Engine::execute`] takes an already typed
-//! [`Command`]. Both run the same code, and both return the affected
-//! [`Document`] or an [`EngineError`]. No input makes the engine panic.
+//! [`Command`]. Both run the same code, and both return an [`Outcome`],
+//! which is the affected [`Document`] or the ID of a closed one, or an
+//! [`EngineError`]. No input makes the engine panic.
 //!
 //! # Commands
 //!
@@ -18,6 +19,7 @@
 //! | `document.replace_range` | `document`, `start`, `end`, `text` | Replaces the bytes from `start` up to but not including `end`. |
 //! | `document.undo` | `document` | Reverts the most recent undo step. |
 //! | `document.redo` | `document` | Reapplies the most recently undone step. |
+//! | `document.close` | `document` | Removes the document and its history. Later commands naming it fail as for an unknown document, and its ID is not reused. |
 //!
 //! `document` is the decimal ID of a document created by this engine. Every
 //! listed parameter is required, and a command accepts no others.
@@ -55,8 +57,9 @@
 //!
 //! let edit = [("document", id.as_str()), ("text", "hello")];
 //! engine.dispatch(command_id::REPLACE_TEXT, &edit)?;
-//! let document = engine.dispatch(command_id::UNDO, &[("document", id.as_str())])?;
+//! let undone = engine.dispatch(command_id::UNDO, &[("document", id.as_str())])?;
 //!
+//! let document = undone.document().expect("undo leaves the document open");
 //! assert_eq!(document.text(), "");
 //! assert!(document.can_redo());
 //! # Ok::<(), bite_engine::EngineError>(())
@@ -75,6 +78,7 @@ pub mod command_id {
     pub const REPLACE_RANGE: &str = "document.replace_range";
     pub const UNDO: &str = "document.undo";
     pub const REDO: &str = "document.redo";
+    pub const CLOSE: &str = "document.close";
 }
 
 /// Describes one command: its stable ID and the parameters it requires.
@@ -117,6 +121,11 @@ pub const COMMANDS: &[CommandSpec] = &[
         summary: "Reapplies the most recently undone step of a document.",
         params: &["document"],
     },
+    CommandSpec {
+        id: command_id::CLOSE,
+        summary: "Removes a document and its history from the engine.",
+        params: &["document"],
+    },
 ];
 
 /// A validated request to change engine state.
@@ -141,6 +150,9 @@ pub enum Command {
         document: DocumentId,
     },
     Redo {
+        document: DocumentId,
+    },
+    Close {
         document: DocumentId,
     },
 }
@@ -174,6 +186,9 @@ impl Command {
                 document: args.document()?,
             }),
             command_id::REDO => Ok(Self::Redo {
+                document: args.document()?,
+            }),
+            command_id::CLOSE => Ok(Self::Close {
                 document: args.document()?,
             }),
             _ => Err(unknown_command()),
@@ -556,6 +571,31 @@ pub fn text_from_utf8(bytes: &[u8]) -> Result<&str, EngineError> {
     })
 }
 
+/// What a command left behind: the document it created or changed, or the
+/// ID of the document it closed.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Outcome<'a> {
+    Document(&'a Document),
+    Closed(DocumentId),
+}
+
+impl<'a> Outcome<'a> {
+    /// The document, unless the command closed it.
+    pub fn document(self) -> Option<&'a Document> {
+        match self {
+            Self::Document(document) => Some(document),
+            Self::Closed(_) => None,
+        }
+    }
+
+    pub fn id(self) -> DocumentId {
+        match self {
+            Self::Document(document) => document.id(),
+            Self::Closed(id) => id,
+        }
+    }
+}
+
 /// Owns every open document and applies commands to them.
 #[derive(Debug, Default)]
 pub struct Engine {
@@ -573,12 +613,13 @@ impl Engine {
         &mut self,
         id: &str,
         params: &[(&str, &str)],
-    ) -> Result<&Document, EngineError> {
+    ) -> Result<Outcome<'_>, EngineError> {
         self.execute(Command::parse(id, params)?)
     }
 
-    /// Applies `command` and returns the document it affected.
-    pub fn execute(&mut self, command: Command) -> Result<&Document, EngineError> {
+    /// Applies `command` and returns the document it affected, or the ID of
+    /// the document it closed.
+    pub fn execute(&mut self, command: Command) -> Result<Outcome<'_>, EngineError> {
         let document = match command {
             Command::CreateDocument => self.add_document(String::new()),
             Command::LoadDocument { text } => self.add_document(text),
@@ -607,8 +648,14 @@ impl Engine {
                 document.redo()?;
                 document
             }
+            Command::Close { document } => {
+                self.documents
+                    .remove(&document)
+                    .ok_or(EngineError::UnknownDocument(document))?;
+                return Ok(Outcome::Closed(document));
+            }
         };
-        Ok(document)
+        Ok(Outcome::Document(document))
     }
 
     pub fn document(&self, id: DocumentId) -> Option<&Document> {

@@ -7,7 +7,7 @@
 //! [`BiteReply`]. Strings cross as UTF-8 bytes with an explicit length, so
 //! document text may contain NUL bytes. Bad input produces a failed reply.
 
-use bite_engine::{Document, Engine};
+use bite_engine::{Engine, Outcome};
 use std::{ptr, slice, str};
 
 /// An engine instance, opaque to C. Use it from one thread at a time.
@@ -55,7 +55,8 @@ pub struct BiteReply {
     pub can_redo: bool,
     /// The affected document's ID when `ok`, otherwise 0.
     pub document: u64,
-    /// UTF-8: the document text when `ok`, otherwise an error message.
+    /// UTF-8: the document text when `ok`, otherwise an error message. Empty
+    /// after `document.close`, which also reports no undo or redo.
     pub text: *mut u8,
     pub text_len: usize,
 }
@@ -75,14 +76,19 @@ impl BiteReply {
         }
     }
 
-    fn document(document: &Document) -> Self {
-        Self::new(
-            true,
-            document.id().into(),
-            document.can_undo(),
-            document.can_redo(),
-            document.text(),
-        )
+    /// A closed document replies with its ID, empty text, and no undo or
+    /// redo, as ADR 0004 records.
+    fn outcome(outcome: Outcome) -> Self {
+        match outcome {
+            Outcome::Document(document) => Self::new(
+                true,
+                document.id().into(),
+                document.can_undo(),
+                document.can_redo(),
+                document.text(),
+            ),
+            Outcome::Closed(id) => Self::new(true, id.into(), false, false, ""),
+        }
     }
 
     fn error(message: &str) -> Self {
@@ -152,7 +158,7 @@ pub unsafe extern "C" fn bite_engine_dispatch(
     }
 
     match engine.0.dispatch(command, &pairs) {
-        Ok(document) => BiteReply::document(document),
+        Ok(outcome) => BiteReply::outcome(outcome),
         Err(error) => BiteReply::error(&error.to_string()),
     }
 }

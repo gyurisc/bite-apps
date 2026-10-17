@@ -158,6 +158,33 @@ fn range_edits_reply_with_the_new_text_and_reject_offsets_inside_a_character() {
 }
 
 #[test]
+fn close_replies_with_the_closed_id_and_later_commands_fail() {
+    with_document(|engine, id| {
+        dispatch(
+            engine,
+            "document.replace_text",
+            &[("document", id), ("text", "unsaved")],
+        );
+
+        let closed = dispatch(engine, "document.close", &[("document", id)]);
+        let after = dispatch(engine, "document.undo", &[("document", id)]);
+
+        assert_eq!(
+            closed,
+            Outcome {
+                ok: true,
+                document: id.parse().unwrap(),
+                text: String::new(),
+                can_undo: false,
+                can_redo: false,
+            }
+        );
+        assert!(!after.ok);
+        assert!(after.text.contains(id), "{}", after.text);
+    });
+}
+
+#[test]
 fn an_engine_error_comes_back_as_a_failed_reply_with_its_message() {
     with_document(|engine, _| {
         let reply = dispatch(engine, "document.nope", &[]);

@@ -30,7 +30,8 @@ typedef struct {
     bool can_redo;
     // The affected document's ID when `ok`, otherwise 0.
     uint64_t document;
-    // UTF-8: the document text when `ok`, otherwise an error message.
+    // UTF-8: the document text when `ok`, otherwise an error message. Empty
+    // after `document.close`, which also reports no undo or redo.
     uint8_t *text;
     size_t text_len;
 } BiteReply;
