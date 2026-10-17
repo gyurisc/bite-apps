@@ -1,0 +1,5 @@
+# Pinned so a new Rust release, with new Clippy lints, cannot fail CI on
+# unrelated changes. Raise it in its own change.
+[toolchain]
+channel = "1.99.0"
+components = ["rustfmt", "clippy"]
