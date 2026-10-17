@@ -137,6 +137,59 @@ fn commands_run_in_order_and_undo_reaches_back_within_the_run() {
 }
 
 #[test]
+fn range_edits_change_bytes_in_place_and_undo_as_typing_does() {
+    let dir = scratch("range_edits");
+    let file = dir.join("notes.txt");
+    fs::write(&file, "caf\u{e9}\n").unwrap();
+
+    let output = bite(&[
+        path_arg(&file),
+        "document.replace_range",
+        "start=5",
+        "end=5",
+        "text=!",
+        "document.replace_range",
+        "start=6",
+        "end=6",
+        "text=!",
+        "document.replace_range",
+        "start=0",
+        "end=0",
+        "text=Le ",
+        "document.undo",
+        "document.undo",
+    ]);
+
+    // The first undo removes "Le "; the second removes both "!", typed as one step.
+    assert!(output.status.success(), "{}", stderr(&output));
+    assert_eq!(fs::read_to_string(&file).unwrap(), "caf\u{e9}\n");
+}
+
+#[test]
+fn a_range_edit_inside_a_character_saves_nothing() {
+    let dir = scratch("range_edit_inside_character");
+    let file = dir.join("notes.txt");
+    fs::write(&file, "caf\u{e9}\n").unwrap();
+
+    let output = bite(&[
+        path_arg(&file),
+        "document.replace_range",
+        "start=4",
+        "end=4",
+        "text=x",
+    ]);
+
+    assert_eq!(output.status.code(), Some(1));
+    let message = stderr(&output);
+    assert!(
+        message.contains("`start` 4 falls inside a character"),
+        "{message}"
+    );
+    assert!(message.contains("nothing was saved"), "{message}");
+    assert_eq!(fs::read_to_string(&file).unwrap(), "caf\u{e9}\n");
+}
+
+#[test]
 fn a_file_that_ends_unchanged_is_left_untouched() {
     let dir = scratch("unchanged_file");
     let file = dir.join("notes.txt");

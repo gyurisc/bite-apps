@@ -15,11 +15,29 @@
 //! | `document.create` | none | Creates an empty document. |
 //! | `document.load` | `text` | Creates a document holding `text`, with no undo history. |
 //! | `document.replace_text` | `document`, `text` | Replaces the whole text. |
-//! | `document.undo` | `document` | Reverts the most recent change. |
-//! | `document.redo` | `document` | Reapplies the most recently undone change. |
+//! | `document.replace_range` | `document`, `start`, `end`, `text` | Replaces the bytes from `start` up to but not including `end`. |
+//! | `document.undo` | `document` | Reverts the most recent undo step. |
+//! | `document.redo` | `document` | Reapplies the most recently undone step. |
 //!
 //! `document` is the decimal ID of a document created by this engine. Every
 //! listed parameter is required, and a command accepts no others.
+//!
+//! `start` and `end` are UTF-8 byte offsets into the text, written as ASCII
+//! decimal digits with no sign. They must satisfy `start <= end <=` the
+//! text's length, and each must fall on a boundary between Unicode scalar
+//! values. Replacing text with identical text is not a change.
+//!
+//! # Undo steps
+//!
+//! `document.replace_text` records one undo step per change. Range edits
+//! group as typing does: an insertion joins the current step when it goes
+//! where the previous insertion or replacement ended, and a deletion joins
+//! it when it ends or starts where the previous deletion started, as
+//! Backspace and Forward Delete do. Any other change, and any change after
+//! `document.replace_text`, `document.undo`, or `document.redo`, starts a
+//! new step. Rejected commands and commands that change nothing do not
+//! affect grouping. Grouping depends only on the order of edits, never on
+//! timing; `docs/architecture/0004-edit-model.md` records why.
 //!
 //! # Loading and saving
 //!
@@ -54,6 +72,7 @@ pub mod command_id {
     pub const CREATE: &str = "document.create";
     pub const LOAD: &str = "document.load";
     pub const REPLACE_TEXT: &str = "document.replace_text";
+    pub const REPLACE_RANGE: &str = "document.replace_range";
     pub const UNDO: &str = "document.undo";
     pub const REDO: &str = "document.redo";
 }
@@ -84,13 +103,18 @@ pub const COMMANDS: &[CommandSpec] = &[
         params: &["document", "text"],
     },
     CommandSpec {
+        id: command_id::REPLACE_RANGE,
+        summary: "Replaces the bytes from offset `start` up to but not including `end` with the given text.",
+        params: &["document", "start", "end", "text"],
+    },
+    CommandSpec {
         id: command_id::UNDO,
-        summary: "Reverts the most recent change to a document.",
+        summary: "Reverts the most recent undo step of a document.",
         params: &["document"],
     },
     CommandSpec {
         id: command_id::REDO,
-        summary: "Reapplies the most recently undone change to a document.",
+        summary: "Reapplies the most recently undone step of a document.",
         params: &["document"],
     },
 ];
@@ -99,10 +123,26 @@ pub const COMMANDS: &[CommandSpec] = &[
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Command {
     CreateDocument,
-    LoadDocument { text: String },
-    ReplaceText { document: DocumentId, text: String },
-    Undo { document: DocumentId },
-    Redo { document: DocumentId },
+    LoadDocument {
+        text: String,
+    },
+    ReplaceText {
+        document: DocumentId,
+        text: String,
+    },
+    /// Replaces the bytes `start..end` of the text, as UTF-8 byte offsets.
+    ReplaceRange {
+        document: DocumentId,
+        start: usize,
+        end: usize,
+        text: String,
+    },
+    Undo {
+        document: DocumentId,
+    },
+    Redo {
+        document: DocumentId,
+    },
 }
 
 impl Command {
@@ -122,6 +162,12 @@ impl Command {
             }),
             command_id::REPLACE_TEXT => Ok(Self::ReplaceText {
                 document: args.document()?,
+                text: args.get("text")?.to_owned(),
+            }),
+            command_id::REPLACE_RANGE => Ok(Self::ReplaceRange {
+                document: args.document()?,
+                start: args.offset("start")?,
+                end: args.offset("end")?,
                 text: args.get("text")?.to_owned(),
             }),
             command_id::UNDO => Ok(Self::Undo {
@@ -179,6 +225,21 @@ impl<'a> Args<'a> {
             value: value.to_owned(),
         })
     }
+
+    /// Reads a byte offset written as ASCII decimal digits, with no sign.
+    fn offset(&self, name: &'static str) -> Result<usize, EngineError> {
+        let value = self.get(name)?;
+        let invalid = || EngineError::InvalidOffset {
+            command: self.command,
+            name,
+            value: value.to_owned(),
+        };
+        // `usize::from_str` also accepts a leading `+`.
+        if !value.bytes().all(|byte| byte.is_ascii_digit()) {
+            return Err(invalid());
+        }
+        value.parse().map_err(|_| invalid())
+    }
 }
 
 /// Identifies a document within one [`Engine`].
@@ -207,13 +268,25 @@ impl From<DocumentId> for u64 {
 
 /// An in-memory plain-text document and its undo/redo history.
 ///
-/// History is kept as whole-text snapshots, one per change.
+/// History is kept as whole-text snapshots, one per undo step. Equality also
+/// compares whether the next range edit would join the current undo step.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Document {
     id: DocumentId,
     text: String,
     undo_stack: Vec<String>,
     redo_stack: Vec<String>,
+    open_step: Option<OpenStep>,
+}
+
+/// How the next range edit can join the undo step the previous one recorded.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum OpenStep {
+    /// Text was inserted or replaced; an insertion at this offset joins.
+    Typing { at: usize },
+    /// Text was deleted from this offset; a deletion that ends or starts here
+    /// joins.
+    Deleting { at: usize },
 }
 
 impl Document {
@@ -223,6 +296,7 @@ impl Document {
             text,
             undo_stack: Vec::new(),
             redo_stack: Vec::new(),
+            open_step: None,
         }
     }
 
@@ -251,6 +325,68 @@ impl Document {
         let previous = std::mem::replace(&mut self.text, text);
         self.undo_stack.push(previous);
         self.redo_stack.clear();
+        self.open_step = None;
+    }
+
+    /// Replaces the bytes `start..end`. An insertion that continues typing,
+    /// or a deletion that continues Backspace or Forward Delete, joins the
+    /// previous range edit's undo step; anything else starts a new one.
+    /// Replacing a range with identical text is not a change.
+    fn replace_range(&mut self, start: usize, end: usize, text: String) -> Result<(), EngineError> {
+        self.check_range(start, end)?;
+        if self.text[start..end] == text {
+            return Ok(());
+        }
+        let inserts = !text.is_empty();
+        let deletes = start < end;
+        let joins = match (self.open_step, deletes, inserts) {
+            (Some(OpenStep::Typing { at }), false, true) => start == at,
+            (Some(OpenStep::Deleting { at }), true, false) => end == at || start == at,
+            _ => false,
+        };
+        if !joins {
+            self.undo_stack.push(self.text.clone());
+        }
+        self.text.replace_range(start..end, &text);
+        self.redo_stack.clear();
+        self.open_step = Some(if inserts {
+            OpenStep::Typing {
+                at: start + text.len(),
+            }
+        } else {
+            OpenStep::Deleting { at: start }
+        });
+        Ok(())
+    }
+
+    fn check_range(&self, start: usize, end: usize) -> Result<(), EngineError> {
+        let document = self.id;
+        if start > end {
+            return Err(EngineError::StartAfterEnd {
+                document,
+                start,
+                end,
+            });
+        }
+        let len = self.text.len();
+        for (name, offset) in [("start", start), ("end", end)] {
+            if offset > len {
+                return Err(EngineError::OffsetPastEnd {
+                    document,
+                    name,
+                    offset,
+                    len,
+                });
+            }
+            if !self.text.is_char_boundary(offset) {
+                return Err(EngineError::OffsetInsideCharacter {
+                    document,
+                    name,
+                    offset,
+                });
+            }
+        }
+        Ok(())
     }
 
     fn undo(&mut self) -> Result<(), EngineError> {
@@ -260,6 +396,7 @@ impl Document {
             .ok_or(EngineError::NothingToUndo(self.id))?;
         let undone = std::mem::replace(&mut self.text, previous);
         self.redo_stack.push(undone);
+        self.open_step = None;
         Ok(())
     }
 
@@ -270,6 +407,7 @@ impl Document {
             .ok_or(EngineError::NothingToRedo(self.id))?;
         let current = std::mem::replace(&mut self.text, next);
         self.undo_stack.push(current);
+        self.open_step = None;
         Ok(())
     }
 }
@@ -293,6 +431,31 @@ pub enum EngineError {
     InvalidDocumentId {
         command: &'static str,
         value: String,
+    },
+    /// An offset parameter that is not written as ASCII decimal digits, or
+    /// is too large to be an offset.
+    InvalidOffset {
+        command: &'static str,
+        name: &'static str,
+        value: String,
+    },
+    StartAfterEnd {
+        document: DocumentId,
+        start: usize,
+        end: usize,
+    },
+    /// The offset named `name` is past the text, which is `len` bytes long.
+    OffsetPastEnd {
+        document: DocumentId,
+        name: &'static str,
+        offset: usize,
+        len: usize,
+    },
+    /// The offset named `name` falls inside the UTF-8 bytes of one character.
+    OffsetInsideCharacter {
+        document: DocumentId,
+        name: &'static str,
+        offset: usize,
     },
     UnknownDocument(DocumentId),
     NothingToUndo(DocumentId),
@@ -326,6 +489,48 @@ impl fmt::Display for EngineError {
                 write!(
                     f,
                     "command `{command}`: {value:?} is not a valid document ID"
+                )
+            }
+            Self::InvalidOffset {
+                command,
+                name,
+                value,
+            } => {
+                write!(
+                    f,
+                    "command `{command}`: {value:?} is not a valid byte offset for `{name}`"
+                )
+            }
+            Self::StartAfterEnd {
+                document,
+                start,
+                end,
+            } => {
+                write!(
+                    f,
+                    "document {document}: `start` {start} is after `end` {end}"
+                )
+            }
+            Self::OffsetPastEnd {
+                document,
+                name,
+                offset,
+                len,
+            } => {
+                write!(
+                    f,
+                    "document {document}: `{name}` {offset} is past the end of the text, \
+                     which is {len} bytes long"
+                )
+            }
+            Self::OffsetInsideCharacter {
+                document,
+                name,
+                offset,
+            } => {
+                write!(
+                    f,
+                    "document {document}: `{name}` {offset} falls inside a character"
                 )
             }
             Self::UnknownDocument(id) => write!(f, "no document with ID {id}"),
@@ -380,6 +585,16 @@ impl Engine {
             Command::ReplaceText { document, text } => {
                 let document = self.document_mut(document)?;
                 document.replace_text(text);
+                document
+            }
+            Command::ReplaceRange {
+                document,
+                start,
+                end,
+                text,
+            } => {
+                let document = self.document_mut(document)?;
+                document.replace_range(start, end, text)?;
                 document
             }
             Command::Undo { document } => {
