@@ -4,7 +4,7 @@
 use std::ffi::OsString;
 use std::fs::{self, File, OpenOptions};
 use std::io::{self, Write};
-use std::os::unix::fs::{MetadataExt, OpenOptionsExt, fchown};
+use std::os::unix::fs::{MetadataExt, OpenOptionsExt, PermissionsExt, fchown};
 use std::path::{Path, PathBuf};
 use std::process;
 
@@ -15,10 +15,12 @@ use std::process;
 /// An existing file is replaced only if it could be written to directly, and
 /// not if it has other hard links, because replacing it would separate them.
 ///
-/// The replacement keeps the file's mode and group. On macOS it also keeps the
-/// access control list, exactly, and the extended attributes macOS keeps when
-/// it saves a document, such as Finder tags. It does not keep the owner, the
-/// creation date, or file flags such as hidden.
+/// The replacement keeps the file's mode and group. If the group cannot be
+/// kept, the new group gets no more access than others have. On macOS
+/// it also keeps the access control list, exactly, and the extended
+/// attributes macOS keeps when it saves a document, such as Finder tags, but
+/// not the quarantine flag of a downloaded file. It does not keep the owner,
+/// the creation date, or file flags such as hidden.
 pub fn save(path: &Path, bytes: &[u8]) -> io::Result<()> {
     let Pending {
         target,
@@ -26,8 +28,10 @@ pub fn save(path: &Path, bytes: &[u8]) -> io::Result<()> {
         temp,
         file,
     } = begin(path)?;
-    let saved = fill(file, bytes, original.as_ref()).and_then(|()| fs::rename(&temp, &target));
+    let saved = fill(&file, bytes, original.as_ref()).and_then(|()| fs::rename(&temp, &target));
     if saved.is_err() {
+        // The original's access control list may forbid deleting the copy.
+        let _ = attributes::clear_acl(&file);
         let _ = fs::remove_file(&temp);
     }
     saved
@@ -129,27 +133,38 @@ fn create_temp(target: &Path, private: bool) -> io::Result<(PathBuf, File)> {
 
 /// Writes `bytes` to the temporary file and, when it replaces `original`,
 /// gives it what the original has besides its text.
-fn fill(mut file: File, bytes: &[u8], original: Option<&File>) -> io::Result<()> {
+fn fill(mut file: &File, bytes: &[u8], original: Option<&File>) -> io::Result<()> {
     file.write_all(bytes)?;
     if let Some(original) = original {
-        keep_metadata(original, &file)?;
+        keep_metadata(original, file)?;
     }
     file.sync_all()
 }
 
 fn keep_metadata(original: &File, file: &File) -> io::Result<()> {
+    // Extended attributes come first: the original's access control list may
+    // stop even its owner from setting them.
     attributes::copy_extended_attributes(original, file)?;
     let metadata = original.metadata()?;
-    if file.metadata()?.gid() != metadata.gid() {
-        fchown(file, None, Some(metadata.gid())).map_err(|error| {
-            io::Error::new(error.kind(), format!("cannot keep its group: {error}"))
-        })?;
+    let mut mode = metadata.mode() & 0o7777;
+    if file.metadata()?.gid() != metadata.gid()
+        && let Err(error) = fchown(file, None, Some(metadata.gid()))
+    {
+        if error.kind() != io::ErrorKind::PermissionDenied {
+            let message = format!("cannot keep its group: {error}");
+            return Err(io::Error::new(error.kind(), message));
+        }
+        // The user is not in the original's group, so the file keeps the
+        // folder's group instead. Members of a file's group get only the group
+        // bits, so they get what others have and nothing more.
+        let others = mode & 0o007;
+        mode = (mode & !0o070) | ((mode >> 3) & others) << 3;
     }
-    // A group change can clear set-ID bits, so the mode comes after it. The
-    // access control list comes last, so its entries cannot block the steps
-    // before it.
-    file.set_permissions(metadata.permissions())?;
-    attributes::copy_acl(original, file)
+    // The access control list, with any deny entries, is in place before the
+    // mode opens the file up. The mode comes after the group change, which
+    // can clear set-ID bits.
+    attributes::copy_acl(original, file)?;
+    file.set_permissions(fs::Permissions::from_mode(mode))
 }
 
 #[cfg(target_os = "macos")]

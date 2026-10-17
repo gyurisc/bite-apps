@@ -23,8 +23,10 @@ FILE is saved only if every command succeeds, through a temporary file and a
 rename, and is left untouched if its text ends up unchanged. Saving keeps
 FILE's mode, group, access control list, and the extended attributes macOS
 keeps when it saves a document, such as Finder tags; not its owner, creation
-date, or flags such as hidden. It refuses a file with other hard links and a
-symbolic link to a missing file. Only UTF-8 files can be opened.
+date, flags such as hidden, or the quarantine flag of a download. If its
+group cannot be kept, the new group gets no more access than others. Saving
+refuses a file with other hard links and a symbolic link to a missing file.
+Only UTF-8 files can be opened.
 
 Exit status: 0 on success, 1 if a command or the file fails, 2 for a
 malformed command line.
