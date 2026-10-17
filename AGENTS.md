@@ -39,7 +39,7 @@ Build clean-room, local-first macOS reimplementations of familiar stock Apple ap
 ## Scope and workflow
 
 - Keep pull requests and commits focused on one user-visible behavior or one foundation task.
-- Run `cargo fmt --all -- --check`, `cargo clippy --workspace --all-targets -- -D warnings`, and `cargo test --workspace` for Rust changes when the workspace supports them.
-- Build and launch the macOS app in Xcode for UI changes. Report any manual verification that could not be completed.
+- Run `scripts/check.sh` for Rust changes. It runs `cargo fmt --all -- --check`, `cargo clippy --workspace --all-targets -- -D warnings`, and `cargo test --workspace`.
+- For UI changes, add or update a UI test in `apps/TextBite/TextBiteUITests` for the behavior and run `scripts/check.sh --ui`. Where macOS Automation Mode is not enabled, run `scripts/check.sh --app` and rely on CI to run the UI tests. Report what was verified by hand, by UI test, or not at all; the maintainer checks the app by hand at each milestone.
 - Do not claim parity with an Apple app unless a specific, tested behavior supports the claim.
 - Do not add App Store packaging, release signing, Windows, sync, or monetization work unless the roadmap is explicitly changed.
