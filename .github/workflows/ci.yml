@@ -34,7 +34,7 @@ jobs:
       - run: cargo test --workspace
 
   app:
-    name: TextBite app and UI tests
+    name: TextBite app and its tests
     runs-on: macos-26
     timeout-minutes: 30
     steps:
@@ -44,7 +44,7 @@ jobs:
       # hoc, so no developer account is needed. The same build as
       # `scripts/check.sh --app`, kept as its own step so a build failure is
       # told apart from a UI test failure.
-      - name: Build app and UI tests
+      - name: Build app and its tests
         run: >
           xcodebuild build-for-testing
           -project apps/TextBite/TextBite.xcodeproj
@@ -56,7 +56,7 @@ jobs:
       # UI tests drive the app through macOS Automation Mode, which otherwise
       # asks for a password.
       - run: sudo automationmodetool enable-automationmode-without-authentication
-      - name: Run UI tests
+      - name: Run unit and UI tests
         run: >
           xcodebuild test-without-building
           -project apps/TextBite/TextBite.xcodeproj
