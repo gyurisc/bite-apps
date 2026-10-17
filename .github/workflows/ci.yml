@@ -1,5 +1,5 @@
 # Runs the checks AGENTS.md asks for on every pull request and on main, and
-# builds the TextBite app. macOS runners, because the CLI's save tests use
+# builds the TextBite app and runs its UI tests. macOS runners, because the CLI's save tests use
 # macOS access control lists and extended attributes. The Rust version comes
 # from rust-toolchain.toml.
 name: CI
@@ -34,17 +34,32 @@ jobs:
       - run: cargo test --workspace
 
   app:
-    name: TextBite app build
+    name: TextBite app and UI tests
     runs-on: macos-26
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v5
       - run: rustup toolchain install
-      # Unsigned: CI checks that the app and the Rust bridge build and link.
-      - run: >
-          xcodebuild build
+      # Builds the app, linking the Rust bridge, and its UI tests. Signed ad
+      # hoc, so no developer account is needed. The same build as
+      # `scripts/check.sh --app`, kept as its own step so a build failure is
+      # told apart from a UI test failure.
+      - name: Build app and UI tests
+        run: >
+          xcodebuild build-for-testing
           -project apps/TextBite/TextBite.xcodeproj
           -scheme TextBite
-          -configuration Debug
           -destination 'platform=macOS,arch=arm64'
-          CODE_SIGNING_ALLOWED=NO
+          -derivedDataPath build
+          CODE_SIGN_IDENTITY=-
+          DEVELOPMENT_TEAM=
+      # UI tests drive the app through macOS Automation Mode, which otherwise
+      # asks for a password.
+      - run: sudo automationmodetool enable-automationmode-without-authentication
+      - name: Run UI tests
+        run: >
+          xcodebuild test-without-building
+          -project apps/TextBite/TextBite.xcodeproj
+          -scheme TextBite
+          -destination 'platform=macOS,arch=arm64'
+          -derivedDataPath build

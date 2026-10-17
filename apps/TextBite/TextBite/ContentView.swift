@@ -16,6 +16,7 @@ struct ContentView: View {
             HStack {
                 TextField("Text to send to the engine", text: $draft)
                     .onSubmit(replaceText)
+                    .accessibilityIdentifier("draft")
                 Button("Replace Text", action: replaceText)
             }
             if let document = model.document {
@@ -23,8 +24,10 @@ struct ContentView: View {
                     .font(.headline)
                 Text(document.text)
                     .textSelection(.enabled)
+                    .accessibilityIdentifier("document-text")
                 Text(document.canUndo ? "The engine can undo this." : "Nothing to undo yet.")
                     .foregroundStyle(.secondary)
+                    .accessibilityIdentifier("undo-status")
             }
             if let errorMessage = model.errorMessage {
                 Text(errorMessage)

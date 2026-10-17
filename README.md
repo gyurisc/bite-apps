@@ -38,13 +38,14 @@ The Rust-to-Swift bridge is a small hand-written C interface in `crates/bite-ffi
 ```text
 bite-apps/
 ├── apps/
-│   └── TextBite/             # native macOS SwiftUI app
+│   └── TextBite/             # native macOS SwiftUI app and its UI tests
 ├── crates/
 │   ├── bite-engine/          # headless document model and commands
 │   ├── bite-ffi/             # C interface used by the SwiftUI app
 │   └── bite-cli/             # command-line interface
 ├── docs/
 │   └── architecture/        # decisions and design notes
+├── scripts/                 # developer checks
 ├── AGENTS.md
 ├── CLAUDE.md
 ├── Cargo.toml
@@ -60,7 +61,12 @@ From the repository root:
 ```sh
 cargo check --workspace
 cargo test --workspace
+scripts/check.sh          # formatting, Clippy, and tests, as CI runs them
+scripts/check.sh --app    # also builds the app and its UI tests
+scripts/check.sh --ui     # also runs the UI tests
 ```
+
+UI tests drive the app through macOS Automation Mode, which asks for a password the first time it is needed. To let them run unattended, enable it once with `sudo automationmodetool enable-automationmode-without-authentication`, and turn it back off with `sudo automationmodetool disable-automationmode-without-authentication`.
 
 The CLI opens a plain-text file, or creates it, runs engine commands on it by their IDs, and saves the result:
 
@@ -71,7 +77,7 @@ cargo run -p bite-cli -- --help
 
 Open the TextBite Xcode project under `apps/` and run it with **⌘R**. The Xcode build runs `cargo` to build the engine, so a Rust toolchain must be installed. App Store distribution, signing for public release, cloud sync, accounts, subscriptions, and monetization are out of scope for the first slice.
 
-GitHub Actions runs the formatting, Clippy, and test checks from `AGENTS.md` and an unsigned build of the app on macOS for every pull request and every push to `main`; see `.github/workflows/ci.yml`. The Rust version is pinned in `rust-toolchain.toml`; raise it in its own change.
+GitHub Actions runs the formatting, Clippy, and test checks from `AGENTS.md`, builds the app signed ad hoc, and runs its UI tests on macOS for every pull request and every push to `main`; see `.github/workflows/ci.yml`. The Rust version is pinned in `rust-toolchain.toml`; raise it in its own change.
 
 ## First-slice acceptance criteria
 

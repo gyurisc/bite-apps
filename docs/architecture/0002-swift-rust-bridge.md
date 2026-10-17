@@ -1,6 +1,6 @@
 # ADR 0002: Hand-written C interface between Swift and the Rust engine
 
-- Status: accepted for the first slice
+- Status: accepted for the first slice; amended by ADR 0004, which adds `document.close`. `Engine::dispatch` now returns an `Outcome` that may name a closed document, and the C reply reports a closed document as its ID with empty text and no undo or redo.
 - Date: 2026-10-13
 
 ## Context

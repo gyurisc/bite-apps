@@ -6,8 +6,19 @@
 	objectVersion = 77;
 	objects = {
 
+/* Begin PBXContainerItemProxy section */
+		28E18A76307E1DF40015DCD0 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 28E18A49307E1DF40015DCD0 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 28E18A50307E1DF40015DCD0;
+			remoteInfo = TextBite;
+		};
+/* End PBXContainerItemProxy section */
+
 /* Begin PBXFileReference section */
 		28E18A51307E1DF40015DCD0 /* TextBite.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = TextBite.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		28E18A70307E1DF40015DCD0 /* TextBiteUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = TextBiteUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
@@ -16,10 +27,22 @@
 			path = TextBite;
 			sourceTree = "<group>";
 		};
+		28E18A71307E1DF40015DCD0 /* TextBiteUITests */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			path = TextBiteUITests;
+			sourceTree = "<group>";
+		};
 /* End PBXFileSystemSynchronizedRootGroup section */
 
 /* Begin PBXFrameworksBuildPhase section */
 		28E18A4E307E1DF40015DCD0 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		28E18A72307E1DF40015DCD0 /* Frameworks */ = {
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
@@ -33,6 +56,7 @@
 			isa = PBXGroup;
 			children = (
 				28E18A53307E1DF40015DCD0 /* TextBite */,
+				28E18A71307E1DF40015DCD0 /* TextBiteUITests */,
 				28E18A52307E1DF40015DCD0 /* Products */,
 			);
 			sourceTree = "<group>";
@@ -41,6 +65,7 @@
 			isa = PBXGroup;
 			children = (
 				28E18A51307E1DF40015DCD0 /* TextBite.app */,
+				28E18A70307E1DF40015DCD0 /* TextBiteUITests.xctest */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -71,6 +96,29 @@
 			productReference = 28E18A51307E1DF40015DCD0 /* TextBite.app */;
 			productType = "com.apple.product-type.application";
 		};
+		28E18A75307E1DF40015DCD0 /* TextBiteUITests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 28E18A7A307E1DF40015DCD0 /* Build configuration list for PBXNativeTarget "TextBiteUITests" */;
+			buildPhases = (
+				28E18A73307E1DF40015DCD0 /* Sources */,
+				28E18A72307E1DF40015DCD0 /* Frameworks */,
+				28E18A74307E1DF40015DCD0 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				28E18A77307E1DF40015DCD0 /* PBXTargetDependency */,
+			);
+			fileSystemSynchronizedGroups = (
+				28E18A71307E1DF40015DCD0 /* TextBiteUITests */,
+			);
+			name = TextBiteUITests;
+			packageProductDependencies = (
+			);
+			productName = TextBiteUITests;
+			productReference = 28E18A70307E1DF40015DCD0 /* TextBiteUITests.xctest */;
+			productType = "com.apple.product-type.bundle.ui-testing";
+		};
 /* End PBXNativeTarget section */
 
 /* Begin PBXProject section */
@@ -83,6 +131,10 @@
 				TargetAttributes = {
 					28E18A50307E1DF40015DCD0 = {
 						CreatedOnToolsVersion = 26.3;
+					};
+					28E18A75307E1DF40015DCD0 = {
+						CreatedOnToolsVersion = 26.3;
+						TestTargetID = 28E18A50307E1DF40015DCD0;
 					};
 				};
 			};
@@ -101,12 +153,20 @@
 			projectRoot = "";
 			targets = (
 				28E18A50307E1DF40015DCD0 /* TextBite */,
+				28E18A75307E1DF40015DCD0 /* TextBiteUITests */,
 			);
 		};
 /* End PBXProject section */
 
 /* Begin PBXResourcesBuildPhase section */
 		28E18A4F307E1DF40015DCD0 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		28E18A74307E1DF40015DCD0 /* Resources */ = {
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
@@ -146,7 +206,22 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		28E18A73307E1DF40015DCD0 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXSourcesBuildPhase section */
+
+/* Begin PBXTargetDependency section */
+		28E18A77307E1DF40015DCD0 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 28E18A50307E1DF40015DCD0 /* TextBite */;
+			targetProxy = 28E18A76307E1DF40015DCD0 /* PBXContainerItemProxy */;
+		};
+/* End PBXTargetDependency section */
 
 /* Begin XCBuildConfiguration section */
 		28E18A5A307E1DF40015DCD0 /* Debug */ = {
@@ -341,6 +416,42 @@
 			};
 			name = Release;
 		};
+		28E18A78307E1DF40015DCD0 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				GENERATE_INFOPLIST_FILE = YES;
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.gyurisc.TextBiteUITests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				STRING_CATALOG_GENERATE_SYMBOLS = NO;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_EMIT_LOC_STRINGS = NO;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+				TEST_TARGET_NAME = TextBite;
+			};
+			name = Debug;
+		};
+		28E18A79307E1DF40015DCD0 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				GENERATE_INFOPLIST_FILE = YES;
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.gyurisc.TextBiteUITests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				STRING_CATALOG_GENERATE_SYMBOLS = NO;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_EMIT_LOC_STRINGS = NO;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+				TEST_TARGET_NAME = TextBite;
+			};
+			name = Release;
+		};
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
@@ -358,6 +469,15 @@
 			buildConfigurations = (
 				28E18A5D307E1DF40015DCD0 /* Debug */,
 				28E18A5E307E1DF40015DCD0 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		28E18A7A307E1DF40015DCD0 /* Build configuration list for PBXNativeTarget "TextBiteUITests" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				28E18A78307E1DF40015DCD0 /* Debug */,
+				28E18A79307E1DF40015DCD0 /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;

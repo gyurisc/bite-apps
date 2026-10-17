@@ -72,7 +72,7 @@ fn main() -> ExitCode {
 
 fn help() -> String {
     let mut help = USAGE.to_owned();
-    for spec in COMMANDS.iter().filter(|spec| acts_on_document(spec)) {
+    for spec in COMMANDS.iter().filter(|spec| refusal(spec).is_none()) {
         help.push_str("  ");
         help.push_str(spec.id);
         for param in spec.params.iter().filter(|param| **param != "document") {
@@ -85,6 +85,17 @@ fn help() -> String {
 
 fn acts_on_document(spec: &CommandSpec) -> bool {
     spec.params.contains(&"document")
+}
+
+/// Why bite-cli cannot run the command, or `None` if it can.
+fn refusal(spec: &CommandSpec) -> Option<&'static str> {
+    if !acts_on_document(spec) {
+        Some("bite-cli opens FILE itself")
+    } else if spec.id == command_id::CLOSE {
+        Some("bite-cli saves FILE after the last command")
+    } else {
+        None
+    }
 }
 
 fn parse(args: impl Iterator<Item = OsString>) -> Result<Request, String> {
@@ -111,10 +122,8 @@ fn parse(args: impl Iterator<Item = OsString>) -> Result<Request, String> {
                 return Err(format!("unknown option {arg}"));
             }
             let spec = COMMANDS.iter().find(|spec| spec.id == arg);
-            if spec.is_some_and(|spec| !acts_on_document(spec)) {
-                return Err(format!(
-                    "`{arg}` cannot be used here: bite-cli opens FILE itself"
-                ));
+            if let Some(reason) = spec.and_then(refusal) {
+                return Err(format!("`{arg}` cannot be used here: {reason}"));
             }
             steps.push(Step {
                 id: arg,
