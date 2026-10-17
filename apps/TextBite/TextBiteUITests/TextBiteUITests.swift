@@ -75,17 +75,80 @@ final class TextBiteUITests: XCTestCase {
     }
 
     @MainActor
-    func testCommandZDoesNotChangeTheTextYet() throws {
-        // The text view's own undo is off; engine undo arrives in a later item.
+    func testCommandZAndShiftCommandZUndoAndRedoInTheEngine() throws {
         let editor = launchEditor()
-        editor.typeText("kept")
+        editor.typeText("hello")
 
         editor.typeKey("z", modifierFlags: .command)
+        assertEngineAndEditorShow("", editor)
 
-        assertEngineAndEditorShow("kept", editor)
+        editor.typeKey("z", modifierFlags: [.command, .shift])
+        assertEngineAndEditorShow("hello", editor)
+    }
+
+    @MainActor
+    func testUndoSelectsTheTextItRestores() throws {
+        let editor = launchEditor()
+        editor.typeText("abc def")
+        for _ in 0..<3 {
+            editor.typeKey(.delete, modifierFlags: [])
+        }
+
+        editor.typeKey("z", modifierFlags: .command)
+        assertEngineAndEditorShow("abc def", editor)
+        // Typing replaces the selection, so this shows "def" was selected.
+        editor.typeText("Q")
+
+        assertEngineAndEditorShow("abc Q", editor)
+    }
+
+    @MainActor
+    func testUndoAndRedoAreEnabledFromTheEngine() throws {
+        let editor = launchEditor()
+        assertEditMenu(undo: false, redo: false)
+
+        editor.typeText("a")
+        assertEditMenu(undo: true, redo: false)
+
+        editor.typeKey("z", modifierFlags: .command)
+        assertEngineAndEditorShow("", editor)
+        assertEditMenu(undo: false, redo: true)
+    }
+
+    @MainActor
+    func testAnotherFieldKeepsItsOwnUndo() throws {
+        let editor = launchEditor()
+        editor.typeText("doc")
+        let field = app.textFields["scratch-field"]
+        XCTAssertTrue(field.waitForExistence(timeout: 5))
+        field.click()
+        field.typeText("note")
+
+        field.typeKey("z", modifierFlags: .command)
+
+        XCTAssertEqual(field.value as? String ?? "", "")
+        assertEngineAndEditorShow("doc", editor)
+
+        // The text view records no undo of its own for this ⌘Z to reach.
+        field.typeKey("z", modifierFlags: .command)
+        assertEngineAndEditorShow("doc", editor)
     }
 
     // MARK: - Helpers
+
+    /// Opens the Edit menu, which makes AppKit validate its items, checks
+    /// whether Undo and Redo are enabled, and closes it again. Escape would
+    /// reach the text view and open its completion list.
+    @MainActor
+    private func assertEditMenu(undo: Bool, redo: Bool, file: StaticString = #filePath, line: UInt = #line) {
+        let edit = app.menuBars.menuBarItems["Edit"]
+        edit.click()
+        let undoItem = app.menuBars.menuItems["Undo"]
+        XCTAssertTrue(undoItem.waitForExistence(timeout: 5), file: file, line: line)
+        XCTAssertEqual(undoItem.isEnabled, undo, "Undo", file: file, line: line)
+        XCTAssertEqual(app.menuBars.menuItems["Redo"].isEnabled, redo, "Redo", file: file, line: line)
+        edit.click()
+    }
 
     /// Puts `string` on the general pasteboard for one test and restores
     /// what was there afterwards, so running the tests keeps the clipboard.
@@ -131,13 +194,18 @@ final class TextBiteUITests: XCTestCase {
         XCTAssertEqual(
             Array((editor.value as? String ?? "").utf8), bytes, "text view", file: file, line: line)
 
+        // SwiftUI leaves an empty text out of the accessibility tree, so a
+        // missing element means the engine's text is empty.
         let engineText = app.descendants(matching: .any)["engine-text"]
-        XCTAssertTrue(engineText.waitForExistence(timeout: 5), file: file, line: line)
         var shown = ""
         let deadline = Date().addingTimeInterval(5)
         repeat {
-            // SwiftUI may expose a text's string as its label or as its value.
-            shown = engineText.label.isEmpty ? (engineText.value as? String ?? "") : engineText.label
+            if !engineText.exists {
+                shown = ""
+            } else {
+                // SwiftUI may expose a text's string as its label or as its value.
+                shown = engineText.label.isEmpty ? (engineText.value as? String ?? "") : engineText.label
+            }
             if Array(shown.utf8) == bytes { return }
             RunLoop.current.run(until: Date().addingTimeInterval(0.1))
         } while Date() < deadline

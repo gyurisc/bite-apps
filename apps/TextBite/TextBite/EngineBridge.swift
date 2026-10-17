@@ -6,6 +6,9 @@ struct DocumentState: Equatable {
     let text: String
     let canUndo: Bool
     let canRedo: Bool
+    /// The UTF-8 byte range of `text` that differs from the text before the
+    /// command, or `nil` if the text did not change, as ADR 0005 describes.
+    let changed: Range<Int>?
 }
 
 /// A command the engine rejected, with the engine's own explanation.
@@ -62,7 +65,9 @@ final class EngineBridge {
             id: reply.document,
             text: text,
             canUndo: reply.can_undo,
-            canRedo: reply.can_redo
+            canRedo: reply.can_redo,
+            changed: reply.changed && reply.changed_start <= reply.changed_end
+                ? reply.changed_start..<reply.changed_end : nil
         )
     }
 }

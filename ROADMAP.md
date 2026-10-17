@@ -36,7 +36,7 @@ One pull request per item, in order. Tick an item in the pull request that compl
 - [x] Engine and bridge: every reply reports the changed byte range, and the C reply carries it, as ADR 0005 describes; ADR 0002 notes the amendment
 - [x] App: an `NSTextView` wrapped for SwiftUI shows the document and sends each edit to the engine before applying it, as `document.replace_range` with byte offsets, or as one `document.replace_text` for a change to several ranges; its own undo is off until the Undo item; UI tests type and delete
 - [x] App: composed input is sent on commit, as ADR 0005 describes; the composition tracking has unit tests in a new unit test target
-- [ ] App: while the text view has focus, Undo and Redo dispatch `document.undo` and `document.redo` and are enabled from the reply; the app selects the reply's changed range and scrolls to it; the text view's own undo is off and other fields keep theirs; UI tests cover ⌘Z and ⇧⌘Z. Edits with several selections are separate undo steps, as ADR 0004 records; grouping them is not part of M5
+- [x] App: while the text view has focus, Undo and Redo dispatch `document.undo` and `document.redo` and are enabled from the reply; the app selects the reply's changed range and scrolls to it; the text view's own undo is off and other fields keep theirs; UI tests cover ⌘Z and ⇧⌘Z. Edits with several selections are separate undo steps, as ADR 0004 records; grouping them is not part of M5
 - [ ] Maintainer: check composed input by hand with a Japanese input source and the accent menu, as ADR 0005 asks, and record the result in the ADR
 - [ ] App: each window owns one document and closes it with `document.close`
 
