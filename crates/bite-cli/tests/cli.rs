@@ -13,6 +13,8 @@ fn scratch(test: &str) -> PathBuf {
         .join(test);
     if dir.exists() {
         make_writable(&dir);
+        // Access control lists from an earlier run could block the removal.
+        let _ = Command::new("chmod").arg("-RN").arg(&dir).status();
         fs::remove_dir_all(&dir).unwrap();
     }
     fs::create_dir_all(&dir).unwrap();
@@ -495,6 +497,11 @@ fn saving_drops_attributes_macos_drops_when_it_saves_a_document() {
         "xattr",
         &["-w", "com.apple.TextEncoding", "macintosh;0", path],
     );
+    // A downloaded file's quarantine flag is not kept either.
+    tool(
+        "xattr",
+        &["-w", "com.apple.quarantine", "0081;00000000;Safari;", path],
+    );
 
     let output = bite(&[path, "document.replace_text", "text=caf\u{e9}"]);
 
@@ -502,6 +509,7 @@ fn saving_drops_attributes_macos_drops_when_it_saves_a_document() {
     assert_eq!(fs::read(&file).unwrap(), "caf\u{e9}".as_bytes());
     let attributes = tool("xattr", &[path]);
     assert!(!attributes.contains("TextEncoding"), "{attributes}");
+    assert!(!attributes.contains("quarantine"), "{attributes}");
 }
 
 #[test]
@@ -523,4 +531,129 @@ fn saving_gives_no_access_the_original_did_not_have() {
     assert_eq!(fs::read(&file).unwrap(), b"new");
     let listing = tool("ls", &["-le", path]);
     assert!(!listing.contains("daemon"), "{listing}");
+}
+
+#[test]
+#[cfg(target_os = "macos")]
+fn a_file_whose_group_cannot_be_kept_gives_its_new_group_no_more_than_others() {
+    let dir = scratch("foreign_group");
+    // A file made in /tmp gets its group, wheel, and keeps it when moved.
+    let made = Path::new("/private/tmp").join(format!("bite-cli-group-{}", std::process::id()));
+    fs::write(&made, "old").unwrap();
+    let file = dir.join("moved.txt");
+    if let Err(error) = fs::rename(&made, &file) {
+        fs::remove_file(&made).unwrap();
+        eprintln!("skipped: cannot move a file from /tmp here: {error}");
+        return;
+    }
+    fs::set_permissions(&file, fs::Permissions::from_mode(0o664)).unwrap();
+    let group = fs::metadata(&file).unwrap().gid();
+    let folder_group = fs::metadata(&dir).unwrap().gid();
+    let mine = tool("id", &["-G"]);
+    if group == folder_group || mine.split_whitespace().any(|gid| gid == group.to_string()) {
+        eprintln!("skipped: the user belongs to the group of a file made in /tmp");
+        return;
+    }
+
+    let output = bite(&[path_arg(&file), "document.replace_text", "text=new"]);
+
+    assert!(output.status.success(), "{}", stderr(&output));
+    assert_eq!(fs::read(&file).unwrap(), b"new");
+    let metadata = fs::metadata(&file).unwrap();
+    assert_eq!(metadata.gid(), folder_group);
+    // Group members lose write, which others never had, and keep read.
+    assert_eq!(metadata.mode() & 0o777, 0o644);
+}
+
+#[test]
+#[cfg(target_os = "macos")]
+fn a_save_refused_by_the_access_control_list_leaves_no_temporary_file() {
+    let dir = scratch("deny_delete");
+    let file = dir.join("guarded.txt");
+    let path = path_arg(&file);
+    fs::write(&file, "keep me").unwrap();
+    tool("chmod", &["+a", "everyone deny delete", path]);
+
+    let output = bite(&[path, "document.replace_text", "text=lost"]);
+    let left = names(&dir);
+    tool("chmod", &["-RN", path_arg(&dir)]);
+
+    assert_eq!(output.status.code(), Some(1));
+    assert!(
+        stderr(&output).contains("nothing was saved"),
+        "{}",
+        stderr(&output)
+    );
+    assert_eq!(fs::read(&file).unwrap(), b"keep me");
+    assert_eq!(left, ["guarded.txt"]);
+}
+
+/// Mounts a new exFAT disk image, which has no access control lists, runs
+/// `test` in it, and detaches it.
+#[cfg(target_os = "macos")]
+fn on_exfat(name: &str, test: impl FnOnce(&Path)) {
+    let dir = scratch(name);
+    let image = dir.join("volume.dmg");
+    let mount = dir.join("mount");
+    fs::create_dir(&mount).unwrap();
+    tool(
+        "hdiutil",
+        &[
+            "create",
+            "-quiet",
+            "-size",
+            "20m",
+            "-fs",
+            "ExFAT",
+            "-volname",
+            "BITE",
+            path_arg(&image),
+        ],
+    );
+    tool(
+        "hdiutil",
+        &[
+            "attach",
+            "-quiet",
+            "-nobrowse",
+            "-mountpoint",
+            path_arg(&mount),
+            path_arg(&image),
+        ],
+    );
+    let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| test(&mount)));
+    tool("hdiutil", &["detach", "-quiet", path_arg(&mount)]);
+    if let Err(panic) = result {
+        std::panic::resume_unwind(panic);
+    }
+}
+
+#[test]
+#[cfg(target_os = "macos")]
+#[ignore = "creates and mounts a disk image; run with `cargo test -- --ignored`"]
+fn saving_on_a_volume_without_access_control_lists_works() {
+    on_exfat("exfat", |volume| {
+        let file = volume.join("notes.txt");
+        let path = path_arg(&file);
+        fs::write(&file, "old").unwrap();
+        let tags = "com.apple.metadata:_kMDItemUserTags";
+        tool("xattr", &["-w", tags, "(Red)", path]);
+
+        let edited = bite(&[path, "document.replace_text", "text=new"]);
+        let created = bite(&[
+            path_arg(&volume.join("new.txt")),
+            "document.replace_text",
+            "text=hi",
+        ]);
+
+        assert!(edited.status.success(), "{}", stderr(&edited));
+        assert!(created.status.success(), "{}", stderr(&created));
+        assert_eq!(fs::read(&file).unwrap(), b"new");
+        assert_eq!(tool("xattr", &["-p", tags, path]), "(Red)\n");
+        let stray: Vec<String> = names(volume)
+            .into_iter()
+            .filter(|name| name.contains(".bite-"))
+            .collect();
+        assert!(stray.is_empty(), "{stray:?}");
+    });
 }
