@@ -1,6 +1,6 @@
 //! Behavior of the engine's commands, exercised through the public API only.
 
-use bite_engine::{COMMANDS, Command, DocumentId, Engine, EngineError, text_from_utf8};
+use bite_engine::{COMMANDS, Command, DocumentId, Engine, EngineError, Outcome, text_from_utf8};
 
 fn create(engine: &mut Engine) -> DocumentId {
     engine.execute(Command::CreateDocument).unwrap().id()
@@ -21,7 +21,11 @@ fn text(engine: &Engine, document: DocumentId) -> &str {
 fn create_returns_an_empty_document_without_history() {
     let mut engine = Engine::new();
 
-    let document = engine.execute(Command::CreateDocument).unwrap();
+    let document = engine
+        .execute(Command::CreateDocument)
+        .unwrap()
+        .document()
+        .unwrap();
 
     assert_eq!(document.text(), "");
     assert!(!document.can_undo());
@@ -46,6 +50,8 @@ fn replace_text_sets_the_document_text() {
     let text = "hello".to_owned();
     let document = engine
         .execute(Command::ReplaceText { document: id, text })
+        .unwrap()
+        .document()
         .unwrap();
 
     assert_eq!(document.text(), "hello");
@@ -70,7 +76,11 @@ fn undo_restores_the_previous_text() {
     replace(&mut engine, id, "first");
     replace(&mut engine, id, "second");
 
-    let document = engine.execute(Command::Undo { document: id }).unwrap();
+    let document = engine
+        .execute(Command::Undo { document: id })
+        .unwrap()
+        .document()
+        .unwrap();
 
     assert_eq!(document.text(), "first");
     assert!(document.can_redo());
@@ -84,7 +94,11 @@ fn redo_reapplies_the_undone_text() {
     replace(&mut engine, id, "second");
     engine.execute(Command::Undo { document: id }).unwrap();
 
-    let document = engine.execute(Command::Redo { document: id }).unwrap();
+    let document = engine
+        .execute(Command::Redo { document: id })
+        .unwrap()
+        .document()
+        .unwrap();
 
     assert_eq!(document.text(), "second");
     assert!(!document.can_redo());
@@ -223,13 +237,25 @@ fn dispatch_runs_each_command_by_its_stable_id() {
         .id()
         .to_string();
     let params = [("document", id.as_str()), ("text", "hello")];
-    let replaced = engine.dispatch("document.replace_text", &params).unwrap();
+    let replaced = engine
+        .dispatch("document.replace_text", &params)
+        .unwrap()
+        .document()
+        .unwrap();
     assert_eq!(replaced.text(), "hello");
 
     let target = [("document", id.as_str())];
-    let undone = engine.dispatch("document.undo", &target).unwrap();
+    let undone = engine
+        .dispatch("document.undo", &target)
+        .unwrap()
+        .document()
+        .unwrap();
     assert_eq!(undone.text(), "");
-    let redone = engine.dispatch("document.redo", &target).unwrap();
+    let redone = engine
+        .dispatch("document.redo", &target)
+        .unwrap()
+        .document()
+        .unwrap();
     assert_eq!(redone.text(), "hello");
 }
 
@@ -415,6 +441,7 @@ fn registry_lists_exactly_the_parameters_each_command_requires() {
             "document.replace_range",
             "document.undo",
             "document.redo",
+            "document.close",
         ]
     );
 
@@ -464,6 +491,8 @@ fn load_creates_a_document_holding_the_text_without_history() {
 
     let document = engine
         .dispatch("document.load", &[("text", "from a file\r\n")])
+        .unwrap()
+        .document()
         .unwrap();
 
     assert_eq!(document.text(), "from a file\r\n");
@@ -572,4 +601,90 @@ fn the_invalid_utf8_message_says_where_the_bad_byte_is() {
 
     assert!(message.contains("UTF-8"), "{message}");
     assert!(message.contains('7'), "{message}");
+}
+
+#[test]
+fn close_removes_the_document_and_reports_its_id() {
+    let mut engine = Engine::new();
+    let id = create(&mut engine);
+    replace(&mut engine, id, "unsaved");
+
+    let closed = engine.execute(Command::Close { document: id }).unwrap();
+
+    assert_eq!(closed, Outcome::Closed(id));
+    assert_eq!(closed.id(), id);
+    assert_eq!(closed.document(), None);
+    assert!(engine.document(id).is_none());
+}
+
+#[test]
+fn commands_naming_a_closed_document_fail_as_for_an_unknown_document() {
+    let mut engine = Engine::new();
+    let id = create(&mut engine);
+    engine.execute(Command::Close { document: id }).unwrap();
+    let text = "x".to_owned();
+
+    for command in [
+        Command::ReplaceText {
+            document: id,
+            text: text.clone(),
+        },
+        Command::ReplaceRange {
+            document: id,
+            start: 0,
+            end: 0,
+            text,
+        },
+        Command::Undo { document: id },
+        Command::Redo { document: id },
+        Command::Close { document: id },
+    ] {
+        assert_eq!(
+            engine.execute(command),
+            Err(EngineError::UnknownDocument(id))
+        );
+    }
+}
+
+#[test]
+fn a_closed_documents_id_is_not_reused() {
+    let mut engine = Engine::new();
+    let first = create(&mut engine);
+    let last = create(&mut engine);
+    engine.execute(Command::Close { document: first }).unwrap();
+    engine.execute(Command::Close { document: last }).unwrap();
+
+    let next = create(&mut engine);
+
+    assert_ne!(next, first);
+    assert_ne!(next, last);
+}
+
+#[test]
+fn closing_one_document_leaves_the_others_and_their_history() {
+    let mut engine = Engine::new();
+    let closed = create(&mut engine);
+    let kept = create(&mut engine);
+    replace(&mut engine, kept, "kept");
+
+    engine
+        .dispatch("document.close", &[("document", &closed.to_string())])
+        .unwrap();
+
+    assert_eq!(text(&engine, kept), "kept");
+    let undone = engine
+        .execute(Command::Undo { document: kept })
+        .unwrap()
+        .document()
+        .unwrap();
+    assert_eq!(undone.text(), "");
+}
+
+#[test]
+fn an_outcome_with_a_document_reports_that_document() {
+    let mut engine = Engine::new();
+
+    let outcome = engine.execute(Command::CreateDocument).unwrap();
+
+    assert_eq!(outcome.id(), outcome.document().unwrap().id());
 }

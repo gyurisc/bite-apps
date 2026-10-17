@@ -190,6 +190,24 @@ fn a_range_edit_inside_a_character_saves_nothing() {
 }
 
 #[test]
+fn closing_the_document_is_refused_because_bite_cli_saves_it() {
+    let dir = scratch("close_refused");
+    let file = dir.join("notes.txt");
+    fs::write(&file, "kept").unwrap();
+
+    let output = bite(&[path_arg(&file), "document.close"]);
+
+    assert_eq!(output.status.code(), Some(2));
+    let message = stderr(&output);
+    assert!(
+        message.contains("`document.close` cannot be used here"),
+        "{message}"
+    );
+    assert!(message.contains("saves"), "{message}");
+    assert_eq!(fs::read(&file).unwrap(), b"kept");
+}
+
+#[test]
 fn a_file_that_ends_unchanged_is_left_untouched() {
     let dir = scratch("unchanged_file");
     let file = dir.join("notes.txt");
@@ -451,6 +469,8 @@ fn a_malformed_command_line_is_a_usage_error_and_touches_nothing() {
         vec![file, "document.replace_text", "document=1", "text=x"],
         vec![file, "document.create"],
         vec![file, "document.load", "text=x"],
+        vec![file, "document.close"],
+        vec![file, "document.replace_text", "text=x", "document.close"],
     ] {
         let output = bite(&args);
 
@@ -463,7 +483,7 @@ fn a_malformed_command_line_is_a_usage_error_and_touches_nothing() {
 }
 
 #[test]
-fn help_lists_every_command_that_acts_on_a_document() {
+fn help_lists_every_command_that_edits_a_document() {
     for flag in ["-h", "--help"] {
         let output = bite(&[flag]);
 
@@ -471,8 +491,10 @@ fn help_lists_every_command_that_acts_on_a_document() {
         let help = String::from_utf8(output.stdout).unwrap();
         assert!(help.starts_with("Usage: bite-cli"), "{help}");
         for spec in COMMANDS {
-            let listed = help.contains(spec.id);
-            assert_eq!(listed, spec.params.contains(&"document"), "{}", spec.id);
+            // bite-cli saves the document after the last command, so it
+            // cannot close it.
+            let usable = spec.params.contains(&"document") && spec.id != "document.close";
+            assert_eq!(help.contains(spec.id), usable, "{}", spec.id);
         }
         assert!(help.contains("text=VALUE"), "{help}");
     }

@@ -25,7 +25,7 @@ fn replace_range(
             end,
             text,
         })
-        .map(|document| document.text().to_owned())
+        .map(|outcome| outcome.document().unwrap().text().to_owned())
 }
 
 fn text(engine: &Engine, document: DocumentId) -> &str {
@@ -92,9 +92,17 @@ fn a_range_edit_can_be_undone_and_redone() {
     let id = load(&mut engine, "before");
     replace_range(&mut engine, id, 0, 6, "after").unwrap();
 
-    let undone = engine.execute(Command::Undo { document: id }).unwrap();
+    let undone = engine
+        .execute(Command::Undo { document: id })
+        .unwrap()
+        .document()
+        .unwrap();
     assert_eq!(undone.text(), "before");
-    let redone = engine.execute(Command::Redo { document: id }).unwrap();
+    let redone = engine
+        .execute(Command::Redo { document: id })
+        .unwrap()
+        .document()
+        .unwrap();
     assert_eq!(redone.text(), "after");
 }
 
@@ -124,7 +132,11 @@ fn dispatch_reads_offsets_written_in_decimal_digits() {
         ("document", id.as_str()),
         ("start", "2"),
     ];
-    let document = engine.dispatch("document.replace_range", &params).unwrap();
+    let document = engine
+        .dispatch("document.replace_range", &params)
+        .unwrap()
+        .document()
+        .unwrap();
 
     assert_eq!(document.text(), "abXef");
 }
@@ -305,20 +317,20 @@ fn undo_steps(steps: &[Step]) -> usize {
                 let text = text(&engine, id).to_owned();
                 engine
                     .execute(Command::ReplaceText { document, text })
-                    .map(|document| document.text().to_owned())
+                    .map(|outcome| outcome.document().unwrap().text().to_owned())
             }
             Step::ReplaceText(text) => {
                 let text = text.to_owned();
                 engine
                     .execute(Command::ReplaceText { document, text })
-                    .map(|document| document.text().to_owned())
+                    .map(|outcome| outcome.document().unwrap().text().to_owned())
             }
             Step::Undo => engine
                 .execute(Command::Undo { document })
-                .map(|document| document.text().to_owned()),
+                .map(|outcome| outcome.document().unwrap().text().to_owned()),
             Step::Redo => engine
                 .execute(Command::Redo { document })
-                .map(|document| document.text().to_owned()),
+                .map(|outcome| outcome.document().unwrap().text().to_owned()),
         };
         result.unwrap_or_else(|error| panic!("{step:?} failed: {error}"));
     }
@@ -407,7 +419,11 @@ fn typing_a_word_one_key_at_a_time_undoes_as_one_step() {
     }
 
     assert_eq!(undo_all(&mut engine, id), ["say "]);
-    let redone = engine.execute(Command::Redo { document: id }).unwrap();
+    let redone = engine
+        .execute(Command::Redo { document: id })
+        .unwrap()
+        .document()
+        .unwrap();
     assert_eq!(redone.text(), "say hello");
 }
 
