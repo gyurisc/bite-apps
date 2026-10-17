@@ -412,6 +412,7 @@ fn registry_lists_exactly_the_parameters_each_command_requires() {
             "document.create",
             "document.load",
             "document.replace_text",
+            "document.replace_range",
             "document.undo",
             "document.redo",
         ]

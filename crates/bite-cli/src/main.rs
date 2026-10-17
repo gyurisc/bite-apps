@@ -19,6 +19,10 @@ COMMAND on it in order, and saves the result. bite-cli supplies the
 `document` parameter. Undo and redo reach back only to changes made earlier
 in the same run.
 
+Range offsets count UTF-8 bytes and must not fall inside a character.
+Consecutive range edits that continue typing or deleting, as a text editor
+would send them, undo as one step.
+
 FILE is saved only if every command succeeds, through a temporary file and a
 rename, and is left untouched if its text ends up unchanged. Saving keeps
 FILE's mode, group, access control list, and the extended attributes macOS

@@ -133,6 +133,31 @@ fn text_with_nul_bytes_and_non_ascii_survives_the_round_trip() {
 }
 
 #[test]
+fn range_edits_reply_with_the_new_text_and_reject_offsets_inside_a_character() {
+    with_document(|engine, id| {
+        let edit = |start, end, text| {
+            let params = [
+                ("document", id),
+                ("start", start),
+                ("end", end),
+                ("text", text),
+            ];
+            dispatch(engine, "document.replace_range", &params)
+        };
+
+        let typed = edit("0", "0", "caf\u{e9}");
+        let inside = edit("4", "4", "x");
+
+        assert_eq!(typed.text, "caf\u{e9}");
+        assert!(typed.can_undo);
+        assert!(!inside.ok);
+        assert!(inside.text.contains("`start` 4"), "{}", inside.text);
+        let undone = dispatch(engine, "document.undo", &[("document", id)]);
+        assert_eq!(undone.text, "");
+    });
+}
+
+#[test]
 fn an_engine_error_comes_back_as_a_failed_reply_with_its_message() {
     with_document(|engine, _| {
         let reply = dispatch(engine, "document.nope", &[]);
