@@ -15,7 +15,8 @@ The next work is the first unchecked item in the current milestone's task list i
 Standing permission, so the work does not wait on routine questions:
 
 - Once `scripts/check.sh` passes (`--app` or `--ui` for app changes) and the critic's findings are handled, commit, push the branch, and open a pull request without asking. Tick the item in `ROADMAP.md` in the same pull request.
-- Then start the next item. If the pull request it depends on is still open, branch from that pull request's branch and say so in the new pull request. Before opening a pull request on top of another, check the earlier one's CI with `gh pr checks`; if it fails, fix that first.
+- Then start the next item without stopping to report. If the pull request it depends on is still open, branch from that pull request's branch and say so in the new pull request. Before opening a pull request on top of another, check the earlier one's CI with `gh pr checks`; if it fails, fix that first.
+- The maintainer reviews and merges a milestone's pull requests together, when its agent items are done, so expect them to stack. Keep going until every item in the milestone that is not a "Maintainer:" item has a pull request, or until one of the reasons to stop below applies. Then report once: the pull requests in merge order, what each was verified by, and anything the maintainer must do.
 - Never merge a pull request, push to `main`, force-push, or delete a branch you did not create in the session.
 - When an accepted ADR or the task list already settles the design, implement it; do not run a brainstorming or design-question step first.
 
