@@ -29,7 +29,7 @@ CLI ─────────┘                            │
 MCP server: later client of the same engine command interface
 ```
 
-The Rust engine owns document state, command execution, validation, and undo/history. The SwiftUI app observes engine state and dispatches commands; it must not become a second implementation of document rules. The CLI is a headless test and automation surface. MCP can be added after the command contract is useful and stable. The engine does not read or write files: each host moves the bytes and hands the engine text, as recorded in `docs/architecture/0003-hosts-move-bytes.md`.
+The Rust engine owns document state, command execution, validation, and undo/history. The SwiftUI app observes engine state and dispatches commands; it must not become a second implementation of document rules. The CLI is a headless test and automation surface. MCP can be added after the command contract is useful and stable. The engine does not read or write files: each host moves the bytes and hands the engine text, as recorded in `docs/architecture/0003-hosts-move-bytes.md`. How editors change text, what positions count, and how typing becomes undo steps are recorded in `docs/architecture/0004-edit-model.md`.
 
 The Rust-to-Swift bridge is a small hand-written C interface in `crates/bite-ffi`; `docs/architecture/0002-swift-rust-bridge.md` records the choice and its alternatives. Keep the boundary small.
 
