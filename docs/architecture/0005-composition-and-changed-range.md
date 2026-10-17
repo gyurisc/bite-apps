@@ -49,7 +49,7 @@ The text view's delegate cannot tell a composition apart from typing: AppKit sen
 
 ## Consequences
 
-- Composition handling is presentation logic in the app. It is tested by UI tests that call the text view's input methods directly, and checked by hand with a real input method and the accent menu.
+- Composition handling is presentation logic in the app. UI tests drive the app from another process and cannot call the text view's input methods, so the composition tracking is tested by unit tests in the app's test bundle that call them directly, and checked by hand with a real input method and the accent menu.
 - The engine and the view differ while a composition is in progress, and only then.
 - Comparing texts is linear in what is compared, like the whole-text snapshots ADR 0004 already accepts. Range edits, which are every keystroke, compare only the replaced bytes.
 - `BiteReply` gains `changed`, `changed_start`, and `changed_end`. This amends ADR 0002 again; the bridge still has one call.
