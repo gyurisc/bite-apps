@@ -77,6 +77,8 @@ The engine owns undo. The app turns off the text view's own undo and replaces th
 
 Parameter `document`. It removes the document and its history. Later commands naming it fail as for an unknown document, and its ID is not reused.
 
+In M5 the app holds one engine. Each window creates its own document in it when the window appears, and when the window closes, the window ends any composition, which commits it, then dispatches `document.close`. Quitting the app closes no documents: AppKit does not report a window closing then, and nothing is lost because M5 does not save. M6's save and quit handling needs its own path through every window's document.
+
 Commands that only read a document are left for M7, when the agent interface needs them; hosts already receive the text in every reply.
 
 ## Consequences

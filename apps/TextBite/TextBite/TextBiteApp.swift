@@ -9,9 +9,12 @@ import SwiftUI
 
 @main
 struct TextBiteApp: App {
+    /// The app's one engine; each window's document lives in it.
+    @State private var engine = EngineBridge()
+
     var body: some Scene {
         WindowGroup {
-            ContentView()
+            ContentView(engine: engine)
         }
     }
 }

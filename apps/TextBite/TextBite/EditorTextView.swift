@@ -18,6 +18,10 @@ final class EditorTextView: NSTextView {
     var canRunHistory: (HistoryCommand) -> Bool = { _ in false }
     /// Undoes or redoes a step in the engine and shows the result.
     var runHistory: (HistoryCommand) -> Void = { _ in }
+    /// Called when the window showing this view is about to close.
+    var windowWillClose: () -> Void = {}
+
+    private var closeObserver: (any NSObjectProtocol)?
 
     /// The composition in progress: where its region starts, how many code
     /// units follow it, and how long the engine's text was when it began.
@@ -93,6 +97,21 @@ final class EditorTextView: NSTextView {
             unmarkText()
         }
         endIfUnmarked()
+    }
+
+    /// Watches the window this view is in, and only that one, for closing.
+    override func viewDidMoveToWindow() {
+        super.viewDidMoveToWindow()
+        if let closeObserver {
+            NotificationCenter.default.removeObserver(closeObserver)
+        }
+        closeObserver = window.map { window in
+            NotificationCenter.default.addObserver(
+                forName: NSWindow.willCloseNotification, object: window, queue: nil
+            ) { [weak self] _ in
+                MainActor.assumeIsolated { self?.windowWillClose() }
+            }
+        }
     }
 
     /// Undo and Redo while this view has focus: the engine owns the
