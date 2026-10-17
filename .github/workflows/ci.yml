@@ -1,0 +1,50 @@
+# Runs the checks AGENTS.md asks for on every pull request and on main, and
+# builds the TextBite app. macOS runners, because the CLI's save tests use
+# macOS access control lists and extended attributes. The Rust version comes
+# from rust-toolchain.toml.
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+# A new push to a pull request replaces its running checks; every commit on
+# main gets its own result.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  rust:
+    name: Rust checks
+    runs-on: macos-26
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v5
+      - run: rustup toolchain install
+      - run: cargo fmt --all -- --check
+      - run: cargo clippy --workspace --all-targets -- -D warnings
+      - run: cargo test --workspace
+
+  app:
+    name: TextBite app build
+    runs-on: macos-26
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v5
+      - run: rustup toolchain install
+      # Unsigned: CI checks that the app and the Rust bridge build and link.
+      - run: >
+          xcodebuild build
+          -project apps/TextBite/TextBite.xcodeproj
+          -scheme TextBite
+          -configuration Debug
+          -destination 'platform=macOS,arch=arm64'
+          CODE_SIGNING_ALLOWED=NO

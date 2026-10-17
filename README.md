@@ -71,6 +71,8 @@ cargo run -p bite-cli -- --help
 
 Open the TextBite Xcode project under `apps/` and run it with **⌘R**. The Xcode build runs `cargo` to build the engine, so a Rust toolchain must be installed. App Store distribution, signing for public release, cloud sync, accounts, subscriptions, and monetization are out of scope for the first slice.
 
+GitHub Actions runs the formatting, Clippy, and test checks from `AGENTS.md` and an unsigned build of the app on macOS for every pull request and every push to `main`; see `.github/workflows/ci.yml`. The Rust version is pinned in `rust-toolchain.toml`; raise it in its own change.
+
 ## First-slice acceptance criteria
 
 1. The Rust engine has a document model and a small command registry with stable IDs.
