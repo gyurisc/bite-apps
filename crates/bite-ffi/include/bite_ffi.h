@@ -28,12 +28,20 @@ typedef struct {
     bool ok;
     bool can_undo;
     bool can_redo;
+    // Whether the command changed the text. False for errors and for
+    // `document.close`.
+    bool changed;
     // The affected document's ID when `ok`, otherwise 0.
     uint64_t document;
     // UTF-8: the document text when `ok`, otherwise an error message. Empty
     // after `document.close`, which also reports no undo or redo.
     uint8_t *text;
     size_t text_len;
+    // When `changed`, the byte range of `text` that differs from the text
+    // before the command; an empty range marks where text was removed.
+    // Otherwise both 0.
+    size_t changed_start;
+    size_t changed_end;
 } BiteReply;
 
 // Creates an engine. Release it with bite_engine_free.

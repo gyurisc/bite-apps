@@ -33,7 +33,7 @@ One pull request per item, in order. Tick an item in the pull request that compl
 - [x] Engine: `document.replace_range` with undo grouping (PR #11)
 - [x] Engine: `document.close`, with the bridge reply and CLI refusal ADR 0004 describes (PR #13)
 - [x] Decide, with the maintainer, the two questions ADR 0004 leaves to M5: how input-method composition reaches the engine and groups into undo steps, and how the selection and scroll position are restored after undo and redo; record the answers in an ADR (ADR 0005)
-- [ ] Engine and bridge: every reply reports the changed byte range, and the C reply carries it, as ADR 0005 describes; ADR 0002 notes the amendment
+- [x] Engine and bridge: every reply reports the changed byte range, and the C reply carries it, as ADR 0005 describes; ADR 0002 notes the amendment
 - [x] App: an `NSTextView` wrapped for SwiftUI shows the document and sends each edit to the engine before applying it, as `document.replace_range` with byte offsets, or as one `document.replace_text` for a change to several ranges; its own undo is off until the Undo item; UI tests type and delete
 - [ ] App: composed input is sent on commit, as ADR 0005 describes; the composition tracking has unit tests in a new unit test target
 - [ ] App: while the text view has focus, Undo and Redo dispatch `document.undo` and `document.redo` and are enabled from the reply; the app selects the reply's changed range and scrolls to it; the text view's own undo is off and other fields keep theirs; UI tests cover ⌘Z and ⇧⌘Z. Edits with several selections are separate undo steps, as ADR 0004 records; grouping them is not part of M5
