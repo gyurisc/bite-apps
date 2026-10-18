@@ -228,14 +228,16 @@ final class TextBiteUITests: XCTestCase {
 
     // MARK: - Helpers
 
-    /// Answers Don't Save when AppKit asks whether to save a document.
-    /// AppKit's button title has a typographic apostrophe. The button is
-    /// looked for in the whole app, whether AppKit shows a sheet or a
-    /// dialog; if it is missing, the failure lists what the app shows.
+    /// Answers Don't Save when AppKit asks whether to keep a document's
+    /// changes. For a new document AppKit's sheet calls the button Delete,
+    /// for a saved one Don't Save, with a typographic apostrophe; the sheet
+    /// identifies it either way. If it is missing, the failure lists what
+    /// the app shows.
     @MainActor
     private func dontSave(file: StaticString = #filePath, line: UInt = #line) {
-        let button = app.buttons.matching(NSPredicate(format: "label BEGINSWITH 'Don' OR title BEGINSWITH 'Don'"))
-            .firstMatch
+        let button = app.buttons.matching(
+            NSPredicate(format: "identifier == 'DontSaveButton' OR label BEGINSWITH 'Don' OR title BEGINSWITH 'Don'")
+        ).firstMatch
         guard button.waitForExistence(timeout: 5) else {
             XCTFail("nothing asked to save:\n\(app.debugDescription)", file: file, line: line)
             return
