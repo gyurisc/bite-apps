@@ -79,6 +79,34 @@ Open the TextBite Xcode project under `apps/` and run it with **⌘R**. The Xcod
 
 GitHub Actions runs the formatting, Clippy, and test checks from `AGENTS.md`, builds the app signed ad hoc, and runs its UI tests on macOS for every pull request and every push to `main`; see `.github/workflows/ci.yml`. The Rust version is pinned in `rust-toolchain.toml`; raise it in its own change.
 
+## TextBite keyboard shortcuts
+
+TextBite's menus hold only commands that work. Each shortcut below is TextBite's own and is used by a UI test in `apps/TextBite/TextBiteUITests`.
+
+| Shortcut | Command |
+|---|---|
+| ⌘N | New |
+| ⌘O | Open… |
+| ⌘W | Close |
+| ⌘S | Save… |
+| ⇧⌘S | Save As… |
+| ⌘Q | Quit TextBite |
+| ⌘Z | Undo |
+| ⇧⌘Z | Redo |
+| ⌘X | Cut |
+| ⌘C | Copy |
+| ⌘V | Paste |
+| ⌘A | Select All |
+| ⌘F | Find… |
+| ⌥⌘F | Find and Replace… |
+| ⌘G | Find Next |
+| ⇧⌘G | Find Previous |
+| ⌘E | Use Selection for Find |
+| ⌘M | Minimize |
+| ⌘H | Hide TextBite |
+
+AppKit adds items of its own to these menus, with their standard shortcuts, and carries them out without TextBite's code: Hide Others (⌥⌘H), Open Recent, AutoFill, Start Dictation, Emoji & Symbols, full screen, and the window tab and tiling items. No test uses those shortcuts; Hide Others would hide the test runner.
+
 ## First-slice acceptance criteria
 
 1. The Rust engine has a document model and a small command registry with stable IDs.
