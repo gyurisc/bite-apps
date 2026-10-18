@@ -82,6 +82,28 @@ final class LineEndingTests: XCTestCase {
     }
 
     @MainActor
+    func testALineBreakConvertedToOneOfTheSameLengthIsStillTheEnginesText() throws {
+        // In a CR document an LF becomes a CR: the length stays the same.
+        let (model, view) = try editor(loading: "a\rb", caret: 1)
+
+        view.insertText("\n", replacementRange: notFound)
+
+        assertShows("a\r\rb", model, view, caret: 2)
+    }
+
+    @MainActor
+    func testACommittedCompositionWithALineBreakPutsTheInsertionPointAfterIt() throws {
+        let (model, view) = try editor(loading: "a\r\nb", caret: 4)
+        view.setMarkedText("\u{e9}", selectedRange: NSRange(location: 1, length: 0), replacementRange: notFound)
+
+        view.insertText("\u{e9}\n", replacementRange: notFound)
+        assertShows("a\r\nb\u{e9}\r\n", model, view, caret: 7)
+
+        view.insertText("x", replacementRange: notFound)
+        assertShows("a\r\nb\u{e9}\r\nx", model, view, caret: 8)
+    }
+
+    @MainActor
     func testEditsThatNeedNoConversionApplyAsTyped() throws {
         let (model, view) = try editor(loading: "a\nb", caret: 1)
 

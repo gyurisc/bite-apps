@@ -76,6 +76,8 @@ Use `NSDocument`, track unsaved changes in the engine, write files only on Save 
 - For undo grouping, the typing position after a converted insertion is the end of the converted text in the engine's bytes, and the app places the insertion point there.
 - The view then holds different text from the engine. The text view's delegate refuses an edit whose inserted text the engine changed, and applies the engine's text over the reply's changed range instead, as it does after undo, placing the insertion point after the inserted text. The view changes while AppKit asks whether it may apply its own edit, before AppKit has changed anything; refused, AppKit applies nothing. Applying it on a later turn of the run loop would let the next keystroke arrive while the view is behind the engine, with offsets that no longer fit. Unit tests type through `insertText` and check the text and the insertion point, and a UI test types Return and a letter into a CRLF file and checks the saved bytes.
 - Only LF, CRLF, and CR count as line breaks. Other separators, such as U+2028, are inserted as typed.
+- A break inserted right next to an existing break of another kind can pair with it: in a CR file, Return just before a stray LF makes one CRLF break. Existing text is never converted, so the app accepts this; it needs a file that already mixes line endings.
+- A committed composition is a range edit too, so its line breaks are converted, and the insertion point goes after the converted text.
 
 ## Consequences
 

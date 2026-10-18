@@ -99,6 +99,18 @@ fn a_line_break_inserted_next_to_an_existing_one_stays_its_own() {
 }
 
 #[test]
+fn a_line_break_inserted_just_before_a_stray_one_can_pair_with_it() {
+    // ADR 0006: existing text is never converted, so a CR typed into a CR
+    // document just before a stray LF makes one CRLF break with it.
+    let mut engine = Engine::new();
+    let id = load(&mut engine, "a\rb\nc");
+
+    let (text, _) = insert(&mut engine, id, 3, "\n");
+
+    assert_eq!(text, "a\rb\r\nc");
+}
+
+#[test]
 fn other_separators_are_inserted_as_given() {
     let mut engine = Engine::new();
     let id = load(&mut engine, "one\r\ntwo");

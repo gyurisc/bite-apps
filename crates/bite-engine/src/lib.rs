@@ -145,7 +145,7 @@ pub const COMMANDS: &[CommandSpec] = &[
     },
     CommandSpec {
         id: command_id::REPLACE_RANGE,
-        summary: "Replaces the bytes from offset `start` up to but not including `end` with the given text.",
+        summary: "Replaces the bytes from offset `start` up to but not including `end` with the given text, whose line breaks take the document's line ending.",
         params: &["document", "start", "end", "text"],
     },
     CommandSpec {

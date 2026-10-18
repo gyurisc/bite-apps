@@ -20,6 +20,8 @@ COMMAND on it in order, and saves the result. bite-cli supplies the
 in the same run.
 
 Range offsets count UTF-8 bytes and must not fall inside a character.
+Line breaks in the text a range edit inserts take FILE's line ending, that
+of its first line break, so later offsets count the converted text.
 Consecutive range edits that continue typing or deleting, as a text editor
 would send them, undo as one step.
 
