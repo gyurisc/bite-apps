@@ -19,6 +19,11 @@ struct DocumentEditor: NSViewRepresentable {
         textView.isRichText = false
         textView.importsGraphics = false
         textView.allowsUndo = false
+        // Find and Replace use the find bar. Its edits reach the engine
+        // through the delegate like any other: Replace as one range, Replace
+        // All as one change to every match.
+        textView.usesFindBar = true
+        textView.isIncrementalSearchingEnabled = true
         textView.font = .monospacedSystemFont(ofSize: NSFont.systemFontSize, weight: .regular)
         textView.textContainerInset = NSSize(width: 4, height: 6)
         textView.setAccessibilityIdentifier("editor")

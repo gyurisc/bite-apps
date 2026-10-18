@@ -362,7 +362,74 @@ final class TextBiteUITests: XCTestCase {
             "the file holds \(String(decoding: (try? Data(contentsOf: file)) ?? Data(), as: UTF8.self).debugDescription)")
     }
 
+    @MainActor
+    func testFindSelectsTheMatchSoTypingReplacesIt() throws {
+        let editor = launchEditor()
+        editor.typeText("a cat sat")
+
+        app.typeKey("f", modifierFlags: .command)
+        app.typeText("cat")
+        app.typeKey(.return, modifierFlags: [])
+        app.typeKey(.escape, modifierFlags: [])
+        app.typeText("dog")
+
+        assertEngineAndEditorShow("a dog sat", editor)
+    }
+
+    @MainActor
+    func testReplaceChangesTheMatchInOneUndoStep() throws {
+        let editor = launchEditor()
+        editor.typeText("a cat sat")
+
+        showReplace(find: "cat", replaceWith: "dog")
+        findBarButton("Replace").click()
+
+        assertEngineAndEditorShow("a dog sat", editor)
+        editor.click()
+        editor.typeKey("z", modifierFlags: .command)
+        assertEngineAndEditorShow("a cat sat", editor)
+    }
+
+    @MainActor
+    func testReplaceAllChangesEveryMatchInOneUndoStep() throws {
+        let editor = launchEditor()
+        editor.typeText("cat and cat and cat")
+
+        showReplace(find: "cat", replaceWith: "dog")
+        findBarButton("All").click()
+
+        assertEngineAndEditorShow("dog and dog and dog", editor)
+        editor.click()
+        editor.typeKey("z", modifierFlags: .command)
+        assertEngineAndEditorShow("cat and cat and cat", editor)
+    }
+
     // MARK: - Helpers
+
+    /// Opens the find bar with its replace field, searches for `find`, and
+    /// fills in `replaceWith`. Tab moves from the search field to the
+    /// replace field.
+    @MainActor
+    private func showReplace(find: String, replaceWith: String) {
+        app.typeKey("f", modifierFlags: [.command, .option])
+        app.typeText(find)
+        app.typeKey(.tab, modifierFlags: [])
+        app.typeText(replaceWith)
+    }
+
+    /// A button of the find bar, in the front window; the Touch Bar has
+    /// buttons with the same titles. If it is missing, the failure lists
+    /// what the app shows.
+    @MainActor
+    private func findBarButton(_ title: String, file: StaticString = #filePath, line: UInt = #line) -> XCUIElement {
+        let button = app.windows.buttons.matching(
+            NSPredicate(format: "label == %@ OR title == %@", title, title)
+        ).firstMatch
+        if !button.waitForExistence(timeout: 5) {
+            XCTFail("no \(title) button:\n\(app.debugDescription)", file: file, line: line)
+        }
+        return button
+    }
 
     /// A new folder in the test runner's temporary folder, removed after the
     /// test, for files the app opens or saves.
