@@ -30,5 +30,5 @@ Hosts move bytes and the engine holds text.
 - File-moving code exists once per host. Rules about text stay in the engine.
 - No engine command takes a file path. Hosts report file-system errors themselves.
 - Only UTF-8 is supported. Other encodings are rejected, not guessed.
-- Editing through a native text view can introduce line endings that differ from the loaded ones. Deciding what to do about that belongs to the milestone that integrates the editor.
+- Editing through a native text view can introduce line endings that differ from the loaded ones. Deciding what to do about that belongs to the milestone that integrates the editor. ADR 0006 gives inserted line breaks the document's line ending.
 - The engine does not track whether a document has unsaved changes. Add that when a host needs it.
