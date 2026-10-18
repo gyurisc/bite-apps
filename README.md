@@ -79,6 +79,43 @@ Open the TextBite Xcode project under `apps/` and run it with **⌘R**. The Xcod
 
 GitHub Actions runs the formatting, Clippy, and test checks from `AGENTS.md`, builds the app signed ad hoc, and runs its UI tests on macOS for every pull request and every push to `main`; see `.github/workflows/ci.yml`. The Rust version is pinned in `rust-toolchain.toml`; raise it in its own change.
 
+## Using TextBite
+
+### Build a copy for everyday use
+
+From the repository root:
+
+```sh
+xcodebuild build -project apps/TextBite/TextBite.xcodeproj -scheme TextBite \
+  -configuration Release -destination "platform=macOS,arch=$(uname -m)" \
+  -derivedDataPath build/TextBite ONLY_ACTIVE_ARCH=YES \
+  CODE_SIGN_IDENTITY=- DEVELOPMENT_TEAM=
+rm -rf /Applications/TextBite.app
+cp -R build/TextBite/Build/Products/Release/TextBite.app /Applications/
+```
+
+Quit TextBite before replacing it. TextBite needs macOS 15.8 or later. The build is for this Mac's processor only and is signed ad hoc, so no developer account is needed; it is not notarized, so to use TextBite on another Mac, build it there. Build again after pulling changes; `build/` is ignored by Git.
+
+### What TextBite does
+
+- Edits plain-text files in UTF-8, one document per window; windows can be merged into tabs.
+- New, Open, Open Recent, Save, Save As, and Revert to Saved. A file is written only when you save it.
+- Marks a window with unsaved changes, and asks before closing it: Save, Don't Save, or Cancel. A new document is asked about in the Save panel, with Delete instead of Don't Save. Quitting asks the same about an unsaved document; with several, macOS first offers to review them one by one or discard them all.
+- Undo and Redo for every edit, with typing grouped into steps; undoing back to the saved text clears the unsaved-changes mark.
+- Find, Find and Replace, Find Next, and Find Previous.
+- Keeps a file exactly as it was: a byte-order mark and every line ending stay, so an unedited file saves back byte for byte. Line breaks you type or paste take the file's line ending.
+- Input methods, such as Japanese input and the accent menu, send text to the document when it is committed. Unit tests cover this; the maintainer's check by hand, which ADR 0005 asks for, is still open.
+
+### What it does not do
+
+- No autosave, versions, or crash recovery: unsaved changes are lost if the app or the Mac stops.
+- Opens only UTF-8; a file in another encoding is refused with the position of its first byte that is not UTF-8.
+- Opens only files macOS counts as plain text, such as `.txt`, `.md`, `.csv`, and source code. The Open panel greys out JSON, YAML, XML, HTML, property lists, and files with no extension that macOS does not recognize, such as `.gitignore`.
+- Typing follows the macOS text substitutions: straight quotes become curly quotes, `--` becomes a dash, and text replacements apply. That changes what is saved, which matters for code and configuration files. Turn them off with Substitutions in the editor's Control-click menu.
+- Plain text only: no rich text, fonts, or styles, and no printing.
+- Does not notice when another app changes an open file, until you save; then macOS asks whether to overwrite it.
+- Every edit passes the whole text between the engine and the window, and every undo step keeps a copy of the whole text, so very large files are slow to edit and use a lot of memory.
+
 ## TextBite keyboard shortcuts
 
 TextBite's menus hold only commands that work. Each shortcut below is TextBite's own and is used by a UI test in `apps/TextBite/TextBiteUITests`.
