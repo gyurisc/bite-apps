@@ -254,7 +254,7 @@ final class TextBiteUITests: XCTestCase {
 
         let message = app.descendants(matching: .staticText)
             .matching(NSPredicate(format: "value CONTAINS 'offset 3' OR label CONTAINS 'offset 3'")).firstMatch
-        XCTAssertTrue(message.waitForExistence(timeout: 10), "no error gave the offset")
+        XCTAssertTrue(message.waitForExistence(timeout: 10), "no error gave the offset:\n\(app.debugDescription)")
         app.typeKey(.return, modifierFlags: [])
         XCTAssertTrue(waitUntil { !message.exists })
         XCTAssertEqual(
@@ -586,6 +586,13 @@ final class TextBiteUITests: XCTestCase {
         app.launchArguments.append("--ui-testing")
         app.launch()
         let editor = app.textViews["editor"]
+        // The app opens a new document at launch. If a test before this
+        // one left the app in a state that keeps it from doing so, which has
+        // happened on CI after a failed test, a new document is made here, so
+        // the failure stays with the test that caused it.
+        if !editor.waitForExistence(timeout: 10) {
+            app.typeKey("n", modifierFlags: .command)
+        }
         XCTAssertTrue(editor.waitForExistence(timeout: 10), "no editor:\n\(app.debugDescription)")
         editor.click()
         return editor
