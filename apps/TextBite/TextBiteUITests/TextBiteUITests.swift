@@ -406,9 +406,11 @@ final class TextBiteUITests: XCTestCase {
 
     // MARK: - Helpers
 
-    /// Opens the find bar with its replace field, searches for `find`, and
-    /// fills in `replaceWith`. AppKit puts focus in the replace field, so
-    /// each field is clicked before typing into it.
+    /// Opens the find bar with its replace field, fills in `replaceWith`,
+    /// and searches for `find`. AppKit puts focus in the replace field, and
+    /// a click there may not move focus to it, so the replacement is typed
+    /// first and the search field is clicked after. If the fields do not
+    /// hold what was typed, the failure lists what the app shows.
     @MainActor
     private func showReplace(find: String, replaceWith: String, file: StaticString = #filePath, line: UInt = #line) {
         app.typeKey("f", modifierFlags: [.command, .option])
@@ -418,10 +420,14 @@ final class TextBiteUITests: XCTestCase {
             XCTFail("no find bar:\n\(app.debugDescription)", file: file, line: line)
             return
         }
+        app.typeText(replaceWith)
         search.click()
-        search.typeText(find)
-        replace.click()
-        replace.typeText(replaceWith)
+        app.typeKey("a", modifierFlags: .command)
+        app.typeText(find)
+        guard search.value as? String == find, replace.value as? String == replaceWith else {
+            XCTFail("the find bar holds the wrong text:\n\(app.debugDescription)", file: file, line: line)
+            return
+        }
     }
 
     /// A button of the find bar, in the front window; the Touch Bar has
