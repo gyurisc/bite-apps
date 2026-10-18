@@ -328,12 +328,14 @@ final class TextBiteUITests: XCTestCase {
     }
 
     /// Answers Don't Save in the sheet asking whether to save a document.
-    /// AppKit's button title has a typographic apostrophe. The sheet is
+    /// AppKit's button title has a typographic apostrophe, and XCUITest may
+    /// report it as the button's label. The sheet is
     /// looked for in the whole app: a window found by its index can be
     /// another one once a sheet opens.
     @MainActor
     private func dontSave(file: StaticString = #filePath, line: UInt = #line) {
-        let button = app.sheets.buttons.matching(NSPredicate(format: "title BEGINSWITH 'Don'")).firstMatch
+        let button = app.sheets.buttons.matching(NSPredicate(format: "label BEGINSWITH 'Don' OR title BEGINSWITH 'Don'"))
+            .firstMatch
         XCTAssertTrue(button.waitForExistence(timeout: 5), "no sheet asked to save", file: file, line: line)
         button.click()
     }
