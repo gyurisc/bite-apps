@@ -426,10 +426,11 @@ final class TextBiteUITests: XCTestCase {
     }
 
     /// Gives `answer` when AppKit asks whether to keep a document's changes.
-    /// If nothing asks, the failure lists what the app shows.
+    /// Only buttons in windows count: the Touch Bar has buttons with the same
+    /// titles. If nothing asks, the failure lists what the app shows.
     @MainActor
     private func answer(_ answer: Answer, file: StaticString = #filePath, line: UInt = #line) {
-        let button = app.buttons.matching(
+        let button = app.windows.buttons.matching(
             NSPredicate(
                 format: "identifier == %@ OR label BEGINSWITH %@ OR title BEGINSWITH %@",
                 answer.identifier, answer.titleStart, answer.titleStart)
