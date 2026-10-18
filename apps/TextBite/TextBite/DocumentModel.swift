@@ -50,6 +50,26 @@ final class DocumentModel {
         run("document.create")
     }
 
+    /// Makes the document hold a file's bytes with `document.load`, which
+    /// gets them unchanged. An open document is replaced, as Revert does:
+    /// editing in progress ends, the new engine document takes its place,
+    /// and the old one is closed, as ADR 0006 describes. If the engine
+    /// refuses the bytes, the document stays as it was.
+    func load(_ bytes: Data) throws {
+        guard !closed else { return }
+        finishEditing()
+        let old = document
+        let state = try engine.dispatch("document.load", ["text": bytes])
+        document = state
+        errorMessage = nil
+        stateDidChange(state)
+        if let old {
+            // The engine refuses only an unknown document, so this is not
+            // expected, and the new document is in place either way.
+            _ = try? engine.dispatch("document.close", ["document": String(old.id)])
+        }
+    }
+
     /// Ends editing in progress, then closes the document with
     /// `document.close`, as when its `TextDocument` closes.
     func close() {
