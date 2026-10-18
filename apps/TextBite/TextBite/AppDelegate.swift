@@ -1,10 +1,34 @@
 import AppKit
 
+/// Ends every document's composition before AppKit reviews unsaved
+/// documents when the app quits, so a composition in a saved document
+/// counts as an unsaved change, as ADR 0006 describes.
+final class DocumentController: NSDocumentController {
+    override func reviewUnsavedDocuments(
+        withAlertTitle title: String?, cancellable: Bool, delegate: Any?,
+        didReviewAllSelector: Selector?, contextInfo: UnsafeMutableRawPointer?
+    ) {
+        finishEditing()
+        super.reviewUnsavedDocuments(
+            withAlertTitle: title, cancellable: cancellable, delegate: delegate,
+            didReviewAllSelector: didReviewAllSelector, contextInfo: contextInfo)
+    }
+
+    /// Ends the composition in every document's window.
+    func finishEditing() {
+        for case let document as TextDocument in documents {
+            document.model.finishEditing()
+        }
+    }
+}
+
 /// Sets up the app's menus. AppKit's document controller does the rest: it
 /// opens an untitled document at launch and reviews unsaved documents when
 /// the app quits.
 final class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationWillFinishLaunching(_ notification: Notification) {
+        // The first document controller made becomes the shared one.
+        _ = DocumentController()
         NSApp.mainMenu = Self.mainMenu()
     }
 

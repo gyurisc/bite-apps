@@ -78,6 +78,18 @@ final class TextDocument: NSDocument {
         }
     }
 
+    /// Ends any composition before AppKit decides whether closing must ask
+    /// about unsaved changes: a composition is not in the engine yet, so
+    /// without this a saved document with one would close without asking
+    /// and lose it, as ADR 0006 describes.
+    override func canClose(
+        withDelegate delegate: Any, shouldClose shouldCloseSelector: Selector?,
+        contextInfo: UnsafeMutableRawPointer?
+    ) {
+        model.finishEditing()
+        super.canClose(withDelegate: delegate, shouldClose: shouldCloseSelector, contextInfo: contextInfo)
+    }
+
     /// Closes the document in the engine too, whether its last window
     /// closed or the app closed it.
     override func close() {
