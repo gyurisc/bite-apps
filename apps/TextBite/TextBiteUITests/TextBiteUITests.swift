@@ -583,7 +583,9 @@ final class TextBiteUITests: XCTestCase {
     @MainActor
     private func launchEditor() -> XCUIElement {
         app = XCUIApplication()
-        app.launchArguments.append("--ui-testing")
+        // Without this, AppKit reopens the documents an earlier test left
+        // open, whose files that test deleted, and then opens no new window.
+        app.launchArguments += ["--ui-testing", "-ApplePersistenceIgnoreState", "YES"]
         app.launch()
         let editor = app.textViews["editor"]
         XCTAssertTrue(editor.waitForExistence(timeout: 10), "no editor:\n\(app.debugDescription)")
