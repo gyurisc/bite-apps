@@ -152,6 +152,7 @@ final class TextBiteUITests: XCTestCase {
         assertEngineAndEditorShow("second", secondEditor, in: secondWindow)
 
         app.typeKey("w", modifierFlags: .command)
+        dontSave(in: secondWindow)
         XCTAssertTrue(waitUntil { self.app.windows.count == 1 })
         assertOpenDocuments(1)
 
@@ -162,7 +163,77 @@ final class TextBiteUITests: XCTestCase {
         assertEngineAndEditorShow("first!", firstEditor, in: firstWindow)
     }
 
+    @MainActor
+    func testTypingInAnotherFieldLeavesTheDocumentUnchanged() throws {
+        _ = launchEditor()
+        let field = app.textFields["scratch-field"]
+        XCTAssertTrue(field.waitForExistence(timeout: 5))
+        field.click()
+        field.typeText("note")
+
+        // An unchanged document closes without asking to save.
+        app.typeKey("w", modifierFlags: .command)
+
+        XCTAssertTrue(waitUntil { self.app.windows.count == 0 }, "the window asked to save")
+    }
+
+    @MainActor
+    func testUndoingEveryEditLeavesTheDocumentUnchanged() throws {
+        let editor = launchEditor()
+        editor.typeText("a")
+        editor.typeKey("z", modifierFlags: .command)
+        assertEngineAndEditorShow("", editor)
+
+        app.typeKey("w", modifierFlags: .command)
+
+        XCTAssertTrue(waitUntil { self.app.windows.count == 0 }, "the window asked to save")
+    }
+
+    @MainActor
+    func testSavingANewDocumentWritesTheEnginesBytesAndMarksItSaved() throws {
+        let text = "caf\u{e9} \u{1F34E}"
+        let folder = FileManager.default.temporaryDirectory
+            .appendingPathComponent("TextBiteUITests-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        addTeardownBlock { try? FileManager.default.removeItem(at: folder) }
+        let file = folder.appendingPathComponent("saved.txt")
+        let editor = launchEditor()
+        editor.typeText(text)
+        let window = app.windows.element(boundBy: 0)
+
+        app.typeKey("s", modifierFlags: .command)
+        let panel = window.sheets.firstMatch
+        XCTAssertTrue(panel.waitForExistence(timeout: 5))
+        // The name field has focus with the name selected, and the panel
+        // adds the extension whether or not it shows it.
+        app.typeText("saved")
+        app.typeKey("g", modifierFlags: [.command, .shift])
+        RunLoop.current.run(until: Date().addingTimeInterval(1))
+        app.typeText(folder.path + "\r")
+        RunLoop.current.run(until: Date().addingTimeInterval(1))
+        app.typeKey(.return, modifierFlags: [])
+
+        XCTAssertTrue(waitUntil { FileManager.default.fileExists(atPath: file.path) }, "nothing was saved")
+        XCTAssertTrue(waitUntil { !panel.exists })
+        XCTAssertEqual(try Data(contentsOf: file), Data(text.utf8))
+        // Undoing an edit after the save returns to the saved state.
+        editor.typeText("!")
+        editor.typeKey("z", modifierFlags: .command)
+        assertEngineAndEditorShow(text, editor)
+        app.typeKey("w", modifierFlags: .command)
+        XCTAssertTrue(waitUntil { self.app.windows.count == 0 }, "the saved window asked to save")
+    }
+
     // MARK: - Helpers
+
+    /// Answers Don't Save in the sheet asking whether to save `window`'s
+    /// document. AppKit's button title has a typographic apostrophe.
+    @MainActor
+    private func dontSave(in window: XCUIElement, file: StaticString = #filePath, line: UInt = #line) {
+        let button = window.sheets.buttons.matching(NSPredicate(format: "title BEGINSWITH 'Don'")).firstMatch
+        XCTAssertTrue(button.waitForExistence(timeout: 5), "no sheet asked to save", file: file, line: line)
+        button.click()
+    }
 
     /// Checks how many documents the app's engine holds, as every window
     /// shows it to UI tests.

@@ -10,6 +10,9 @@ struct DocumentState: Equatable {
     /// The UTF-8 byte range of `text` that differs from the text before the
     /// command, or `nil` if the text did not change, as ADR 0005 describes.
     let changed: Range<Int>?
+    /// Whether the document has changes since it was last marked as saved,
+    /// as ADR 0006 describes.
+    let modified: Bool
 }
 
 /// A command the engine rejected, with the engine's own explanation.
@@ -24,6 +27,9 @@ struct EngineError: LocalizedError {
 /// each window's document lives in it.
 @Observable
 final class EngineBridge {
+    /// The app's engine.
+    static let shared = EngineBridge()
+
     @ObservationIgnored private let engine = bite_engine_new()
 
     /// The documents the engine's replies have shown open and not yet
@@ -79,7 +85,8 @@ final class EngineBridge {
             canUndo: reply.can_undo,
             canRedo: reply.can_redo,
             changed: reply.changed && reply.changed_start <= reply.changed_end
-                ? reply.changed_start..<reply.changed_end : nil
+                ? reply.changed_start..<reply.changed_end : nil,
+            modified: reply.modified
         )
     }
 }
