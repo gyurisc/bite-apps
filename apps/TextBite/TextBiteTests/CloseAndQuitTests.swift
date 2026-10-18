@@ -55,16 +55,20 @@ final class CloseAndQuitTests: XCTestCase {
     }
 
     @MainActor
-    func testTheAppsDocumentControllerEndsEveryCompositionBeforeReviewing() throws {
-        let controller = try XCTUnwrap(NSDocumentController.shared as? DocumentController)
+    func testQuittingEndsEveryCompositionFirst() throws {
+        // Quitting goes through the app's own `terminate(_:)`.
+        XCTAssertTrue(NSApp is Application)
+        let controller = NSDocumentController.shared
         let (document, _, view) = try composingDocument()
         controller.addDocument(document)
         addTeardownBlock { @MainActor in controller.removeDocument(document) }
+        XCTAssertFalse(controller.hasEditedDocuments)
 
-        controller.finishEditing()
+        Application.finishEditing()
 
         XCTAssertFalse(view.isComposing)
         XCTAssertTrue(document.isDocumentEdited)
+        XCTAssertTrue(controller.hasEditedDocuments, "AppKit would now ask before quitting")
     }
 
     private static func editor(in view: NSView?) -> EditorTextView? {

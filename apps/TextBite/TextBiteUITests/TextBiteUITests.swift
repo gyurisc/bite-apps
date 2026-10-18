@@ -296,7 +296,8 @@ final class TextBiteUITests: XCTestCase {
         app.typeKey("w", modifierFlags: .command)
         answer(.cancel)
 
-        XCTAssertTrue(waitUntil { self.app.windows.count == 1 })
+        XCTAssertTrue(waitUntil { self.app.sheets.count == 0 }, "the sheet stayed open")
+        XCTAssertEqual(app.windows.count, 1)
         assertEngineAndEditorShow("draft", editor)
     }
 
