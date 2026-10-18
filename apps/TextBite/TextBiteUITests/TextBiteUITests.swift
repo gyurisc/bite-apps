@@ -152,7 +152,7 @@ final class TextBiteUITests: XCTestCase {
         assertEngineAndEditorShow("second", secondEditor, in: secondWindow)
 
         app.typeKey("w", modifierFlags: .command)
-        dontSave()
+        answer(.dontSave)
         XCTAssertTrue(waitUntil { self.app.windows.count == 1 })
         assertOpenDocuments(1)
 
@@ -288,6 +288,56 @@ final class TextBiteUITests: XCTestCase {
         XCTAssertTrue(waitUntil { !window.exists }, "the reverted window asked to save")
     }
 
+    @MainActor
+    func testCancellingCloseKeepsTheWindowAndItsText() throws {
+        let editor = launchEditor()
+        editor.typeText("draft")
+
+        app.typeKey("w", modifierFlags: .command)
+        answer(.cancel)
+
+        XCTAssertTrue(waitUntil { self.app.windows.count == 1 })
+        assertEngineAndEditorShow("draft", editor)
+    }
+
+    @MainActor
+    func testClosingAnEditedFileWithSaveWritesIt() throws {
+        let file = try scratchFolder().appendingPathComponent("close.txt")
+        try Data("kept".utf8).write(to: file)
+        _ = launchEditor()
+        app.typeKey("o", modifierFlags: .command)
+        choose(file.path)
+        let window = app.windows.matching(NSPredicate(format: "title BEGINSWITH 'close'")).firstMatch
+        XCTAssertTrue(window.waitForExistence(timeout: 10), "no window for the file")
+        let editor = window.textViews["editor"]
+        editor.click()
+        editor.typeKey(.downArrow, modifierFlags: .command)
+        editor.typeText(" and saved")
+        assertEngineAndEditorShow("kept and saved", editor, in: window)
+
+        app.typeKey("w", modifierFlags: .command)
+        answer(.save)
+
+        XCTAssertTrue(waitUntil { !window.exists }, "the window stayed open")
+        XCTAssertEqual(try Data(contentsOf: file), Data("kept and saved".utf8))
+    }
+
+    @MainActor
+    func testQuittingWithUnsavedChangesAsksFirst() throws {
+        let editor = launchEditor()
+        editor.typeText("draft")
+
+        app.typeKey("q", modifierFlags: .command)
+        answer(.cancel)
+        XCTAssertTrue(waitUntil { self.app.windows.count == 1 })
+        XCTAssertEqual(app.state, .runningForeground)
+        assertEngineAndEditorShow("draft", editor)
+
+        app.typeKey("q", modifierFlags: .command)
+        answer(.dontSave)
+        XCTAssertTrue(app.wait(for: .notRunning, timeout: 10), "the app did not quit")
+    }
+
     // MARK: - Helpers
 
     /// A new folder in the test runner's temporary folder, removed after the
@@ -327,15 +377,38 @@ final class TextBiteUITests: XCTestCase {
         }
     }
 
-    /// Answers Don't Save when AppKit asks whether to keep a document's
-    /// changes. For a new document AppKit's sheet calls the button Delete,
-    /// for a saved one Don't Save, with a typographic apostrophe; the sheet
-    /// identifies it either way. If it is missing, the failure lists what
-    /// the app shows.
+    /// The answers AppKit offers when a document with unsaved changes
+    /// closes. For a new document the sheet calls Don't Save Delete; for a
+    /// saved one its title has a typographic apostrophe. The sheet's
+    /// identifiers are the same either way.
+    private enum Answer {
+        case save, dontSave, cancel
+
+        var identifier: String {
+            switch self {
+            case .save: "OKButton"
+            case .dontSave: "DontSaveButton"
+            case .cancel: "CancelButton"
+            }
+        }
+
+        var titleStart: String {
+            switch self {
+            case .save: "Save"
+            case .dontSave: "Don"
+            case .cancel: "Cancel"
+            }
+        }
+    }
+
+    /// Gives `answer` when AppKit asks whether to keep a document's changes.
+    /// If nothing asks, the failure lists what the app shows.
     @MainActor
-    private func dontSave(file: StaticString = #filePath, line: UInt = #line) {
+    private func answer(_ answer: Answer, file: StaticString = #filePath, line: UInt = #line) {
         let button = app.buttons.matching(
-            NSPredicate(format: "identifier == 'DontSaveButton' OR label BEGINSWITH 'Don' OR title BEGINSWITH 'Don'")
+            NSPredicate(
+                format: "identifier == %@ OR label BEGINSWITH %@ OR title BEGINSWITH %@",
+                answer.identifier, answer.titleStart, answer.titleStart)
         ).firstMatch
         guard button.waitForExistence(timeout: 5) else {
             XCTFail("nothing asked to save:\n\(app.debugDescription)", file: file, line: line)

@@ -65,7 +65,7 @@ Use `NSDocument`, track unsaved changes in the engine, write files only on Save 
 ### Saving
 
 - `autosavesInPlace` is false. Save and Save As write the file; until then, the file on disk is unchanged.
-- Closing a window whose document has unsaved changes asks Save, Don't Save, or Cancel, and quitting asks the same for each such document, through `NSDocument` and `NSDocumentController`. Cancel keeps the document open and its composition committed in the engine.
+- Closing a window whose document has unsaved changes asks Save, Don't Save, or Cancel, and quitting asks the same for each such document, through `NSDocument` and `NSDocumentController`. Cancel keeps the document open and its composition committed in the engine. A document that was never saved is asked about with the Save panel itself: AppKit asks whether to keep the new document and offers Delete in place of Don't Save.
 - M6 writes no background copies for crash recovery. Window restoration after relaunch follows AppKit's defaults; UI tests must not depend on it.
 
 ### Line endings
