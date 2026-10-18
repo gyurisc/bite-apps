@@ -44,14 +44,30 @@ final class OpenDocumentTests: XCTestCase {
         let engine = EngineBridge()
         let document = TextDocument(engine: engine)
 
-        XCTAssertThrowsError(try document.read(from: url, ofType: plainText)) { error in
-            let error = error as NSError
-            XCTAssertTrue(error.localizedDescription.contains("latin1.txt"), error.localizedDescription)
-            let reason = error.localizedRecoverySuggestion ?? ""
-            XCTAssertTrue(reason.contains("offset 3"), reason)
-        }
+        XCTAssertThrowsError(try document.read(from: url, ofType: plainText))
+
         XCTAssertNil(document.model.document)
         XCTAssertEqual(engine.openDocuments, [])
+    }
+
+    @MainActor
+    func testOpeningAFileThatIsNotUTF8ShowsAnErrorNamingTheFileAndTheOffset() async throws {
+        let url = try file(Data([0x63, 0x61, 0x66, 0xE9, 0x0A]), named: "latin1.txt")
+        let controller = NSDocumentController.shared
+        let open = EngineBridge.shared.openDocuments
+        let documents = controller.documents.count
+
+        do {
+            _ = try await controller.openDocument(withContentsOf: url, display: false)
+            XCTFail("a file that is not UTF-8 should not open")
+        } catch {
+            // What the alert shows: AppKit's message, then the details.
+            let alert = NSAlert(error: controller.willPresentError(error))
+            XCTAssertTrue(alert.messageText.contains("latin1.txt"), alert.messageText)
+            XCTAssertTrue(alert.informativeText.contains("offset 3"), alert.informativeText)
+        }
+        XCTAssertEqual(controller.documents.count, documents)
+        XCTAssertEqual(EngineBridge.shared.openDocuments, open)
     }
 
     @MainActor
@@ -107,5 +123,31 @@ final class OpenDocumentTests: XCTestCase {
         XCTAssertFalse(view.isComposing)
         XCTAssertEqual(document.model.document?.text, "saved")
         withExtendedLifetime(coordinator) {}
+    }
+
+    @MainActor
+    func testTheWindowShowsTheRevertedText() throws {
+        let url = try file(Data("saved".utf8))
+        let document = TextDocument(engine: EngineBridge())
+        try document.read(from: url, ofType: plainText)
+        document.makeWindowControllers()
+        let window = try XCTUnwrap(document.windowControllers.first?.window)
+        window.layoutIfNeeded()
+        let view = try XCTUnwrap(Self.editor(in: window.contentView))
+        XCTAssertTrue(document.model.replaceText(with: "changed"))
+        RunLoop.current.run(until: Date().addingTimeInterval(0.2))
+        XCTAssertEqual(view.string, "changed")
+
+        try document.revert(toContentsOf: url, ofType: plainText)
+        RunLoop.current.run(until: Date().addingTimeInterval(0.2))
+
+        XCTAssertEqual(view.string, "saved")
+        document.close()
+    }
+
+    private static func editor(in view: NSView?) -> EditorTextView? {
+        guard let view else { return nil }
+        if let editor = view as? EditorTextView { return editor }
+        return view.subviews.lazy.compactMap { editor(in: $0) }.first
     }
 }

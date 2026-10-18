@@ -279,7 +279,7 @@ final class TextBiteUITests: XCTestCase {
 
         app.menuBars.menuBarItems["File"].click()
         app.menuBars.menuItems["Revert to Saved"].click()
-        let revert = window.sheets.buttons["Revert"]
+        let revert = app.sheets.buttons["Revert"]
         XCTAssertTrue(revert.waitForExistence(timeout: 5), "no sheet asked to revert")
         revert.click()
 
@@ -300,16 +300,31 @@ final class TextBiteUITests: XCTestCase {
         return folder
     }
 
-    /// In an open Open or Save panel, goes to `path` and confirms: a file to
-    /// open, or the folder to save in.
+    /// The Open panel, or the Save panel's sheet.
+    private var panel: XCUIElement {
+        app.descendants(matching: .any).matching(
+            NSPredicate(
+                format: "elementType == %d OR elementType == %d OR (elementType == %d AND title == 'Open')",
+                XCUIElement.ElementType.sheet.rawValue, XCUIElement.ElementType.dialog.rawValue,
+                XCUIElement.ElementType.window.rawValue)
+        ).firstMatch
+    }
+
+    /// Once the Open or Save panel is up, goes to `path` and confirms: a
+    /// file to open, or the folder to save in. Return confirms the panel
+    /// only if going to the path left it open.
     @MainActor
-    private func choose(_ path: String) {
-        RunLoop.current.run(until: Date().addingTimeInterval(1))
+    private func choose(_ path: String, file: StaticString = #filePath, line: UInt = #line) {
+        let panel = self.panel
+        XCTAssertTrue(panel.waitForExistence(timeout: 10), "no panel opened", file: file, line: line)
+        RunLoop.current.run(until: Date().addingTimeInterval(0.5))
         app.typeKey("g", modifierFlags: [.command, .shift])
         RunLoop.current.run(until: Date().addingTimeInterval(1))
         app.typeText(path + "\r")
         RunLoop.current.run(until: Date().addingTimeInterval(1))
-        app.typeKey(.return, modifierFlags: [])
+        if panel.exists {
+            app.typeKey(.return, modifierFlags: [])
+        }
     }
 
     /// Answers Don't Save in the sheet asking whether to save a document.

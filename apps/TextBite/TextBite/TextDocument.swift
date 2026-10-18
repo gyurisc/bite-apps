@@ -65,10 +65,12 @@ final class TextDocument: NSDocument {
             do {
                 try model.load(bytes)
             } catch let error as EngineError {
+                // AppKit names the file in the alert's message; the details
+                // give the engine's reason, with the offset.
                 throw CocoaError(
                     .fileReadCorruptFile,
                     userInfo: [
-                        NSLocalizedDescriptionKey: "TextBite can’t read “\(url.lastPathComponent)” as plain text.",
+                        NSLocalizedFailureReasonErrorKey: "It is not UTF-8 text.",
                         NSLocalizedRecoverySuggestionErrorKey: error.message,
                         NSURLErrorKey: url,
                     ])
