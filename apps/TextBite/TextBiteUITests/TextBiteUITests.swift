@@ -152,7 +152,7 @@ final class TextBiteUITests: XCTestCase {
         assertEngineAndEditorShow("second", secondEditor, in: secondWindow)
 
         app.typeKey("w", modifierFlags: .command)
-        dontSave(in: secondWindow)
+        dontSave()
         XCTAssertTrue(waitUntil { self.app.windows.count == 1 })
         assertOpenDocuments(1)
 
@@ -191,7 +191,8 @@ final class TextBiteUITests: XCTestCase {
 
     @MainActor
     func testSavingANewDocumentWritesTheEnginesBytesAndMarksItSaved() throws {
-        let text = "caf\u{e9} \u{1F34E}"
+        // Typed text, so no emoji: the tests paste those.
+        let text = "caf\u{e9} \u{fc}ber"
         let folder = FileManager.default.temporaryDirectory
             .appendingPathComponent("TextBiteUITests-\(UUID().uuidString)")
         try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
@@ -199,6 +200,7 @@ final class TextBiteUITests: XCTestCase {
         let file = folder.appendingPathComponent("saved.txt")
         let editor = launchEditor()
         editor.typeText(text)
+        assertEngineAndEditorShow(text, editor)
         let window = app.windows.element(boundBy: 0)
 
         app.typeKey("s", modifierFlags: .command)
@@ -226,11 +228,13 @@ final class TextBiteUITests: XCTestCase {
 
     // MARK: - Helpers
 
-    /// Answers Don't Save in the sheet asking whether to save `window`'s
-    /// document. AppKit's button title has a typographic apostrophe.
+    /// Answers Don't Save in the sheet asking whether to save a document.
+    /// AppKit's button title has a typographic apostrophe. The sheet is
+    /// looked for in the whole app: a window found by its index can be
+    /// another one once a sheet opens.
     @MainActor
-    private func dontSave(in window: XCUIElement, file: StaticString = #filePath, line: UInt = #line) {
-        let button = window.sheets.buttons.matching(NSPredicate(format: "title BEGINSWITH 'Don'")).firstMatch
+    private func dontSave(file: StaticString = #filePath, line: UInt = #line) {
+        let button = app.sheets.buttons.matching(NSPredicate(format: "title BEGINSWITH 'Don'")).firstMatch
         XCTAssertTrue(button.waitForExistence(timeout: 5), "no sheet asked to save", file: file, line: line)
         button.click()
     }
