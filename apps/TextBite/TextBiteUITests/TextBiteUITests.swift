@@ -586,7 +586,7 @@ final class TextBiteUITests: XCTestCase {
         app.launchArguments.append("--ui-testing")
         app.launch()
         let editor = app.textViews["editor"]
-        XCTAssertTrue(editor.waitForExistence(timeout: 10))
+        XCTAssertTrue(editor.waitForExistence(timeout: 10), "no editor:\n\(app.debugDescription)")
         editor.click()
         return editor
     }

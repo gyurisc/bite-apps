@@ -13,6 +13,14 @@ final class DocumentController: NSDocumentController {
         return super.hasEditedDocuments
     }
 
+    /// UI tests open and save files in the test runner's own container. If
+    /// such a file were in Open Recent, a later launch could stop to ask
+    /// whether TextBite may use another app's data.
+    override func noteNewRecentDocumentURL(_ url: URL) {
+        guard !ProcessInfo.processInfo.arguments.contains("--ui-testing") else { return }
+        super.noteNewRecentDocumentURL(url)
+    }
+
     /// Ends the composition in every document's window.
     func finishEditing() {
         for case let document as TextDocument in documents {
