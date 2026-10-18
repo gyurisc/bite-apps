@@ -6,10 +6,14 @@
 //! named parameters to [`Engine::dispatch`] and reports the outcome as a
 //! [`BiteReply`]. Strings cross as UTF-8 bytes with an explicit length, so
 //! document text may contain NUL bytes. Bad input produces a failed reply.
+//! Bytes that are not UTF-8 are checked with [`text_from_utf8`], so a host
+//! can pass a file's bytes to `document.load` unchanged and learn the offset
+//! of the first invalid byte, as
+//! `docs/architecture/0006-documents-in-the-app.md` records.
 
-use bite_engine::{Engine, Outcome};
+use bite_engine::{Engine, Outcome, text_from_utf8};
 use std::ops::Range;
-use std::{ptr, slice, str};
+use std::{ptr, slice};
 
 /// An engine instance, opaque to C. Use it from one thread at a time.
 pub struct BiteEngine(Engine);
@@ -23,21 +27,22 @@ pub struct BiteStr {
 }
 
 impl BiteStr {
-    /// Returns `None` for a null pointer with a non-zero length and for bytes
-    /// that are not UTF-8.
+    /// Fails for a null pointer with a non-zero length, and for bytes that
+    /// are not UTF-8, with the offset of the first invalid byte.
     ///
     /// # Safety
     ///
     /// `ptr` must be null or point to `len` readable bytes that stay valid
     /// for `'a`.
-    unsafe fn as_str<'a>(self) -> Option<&'a str> {
+    unsafe fn as_str<'a>(self) -> Result<&'a str, String> {
         if self.len == 0 {
-            return Some("");
+            return Ok("");
         }
         if self.ptr.is_null() {
-            return None;
+            return Err("null pointer with a non-zero length".to_owned());
         }
-        str::from_utf8(unsafe { slice::from_raw_parts(self.ptr, self.len) }).ok()
+        text_from_utf8(unsafe { slice::from_raw_parts(self.ptr, self.len) })
+            .map_err(|error| error.to_string())
     }
 }
 
@@ -183,8 +188,9 @@ pub unsafe extern "C" fn bite_engine_dispatch(
     let Some(engine) = (unsafe { engine.as_mut() }) else {
         return BiteReply::error("engine pointer is null");
     };
-    let Some(command) = (unsafe { command.as_str() }) else {
-        return BiteReply::error("command ID is not a valid UTF-8 string");
+    let command = match unsafe { command.as_str() } {
+        Ok(command) => command,
+        Err(error) => return BiteReply::error(&format!("command ID: {error}")),
     };
     let params = if param_count == 0 {
         &[]
@@ -196,10 +202,13 @@ pub unsafe extern "C" fn bite_engine_dispatch(
 
     let mut pairs = Vec::with_capacity(params.len());
     for param in params {
-        let name = unsafe { param.name.as_str() };
-        let value = unsafe { param.value.as_str() };
-        let (Some(name), Some(value)) = (name, value) else {
-            return BiteReply::error("a parameter is not a valid UTF-8 string");
+        let name = match unsafe { param.name.as_str() } {
+            Ok(name) => name,
+            Err(error) => return BiteReply::error(&format!("a parameter name: {error}")),
+        };
+        let value = match unsafe { param.value.as_str() } {
+            Ok(value) => value,
+            Err(error) => return BiteReply::error(&format!("parameter {name:?}: {error}")),
         };
         pairs.push((name, value));
     }

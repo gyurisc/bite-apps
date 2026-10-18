@@ -55,7 +55,9 @@ BiteEngine *bite_engine_new(void);
 void bite_engine_free(BiteEngine *engine);
 
 // Runs the command `command` with `param_count` named parameters and reports
-// its outcome. Bad input produces a failed reply. `params` may be NULL when
+// its outcome. Bad input produces a failed reply; bytes that are not UTF-8
+// fail with the offset of the first invalid byte, so a file's bytes can be
+// passed to `document.load` unchanged. `params` may be NULL when
 // `param_count` is 0.
 BiteReply bite_engine_dispatch(BiteEngine *engine, BiteStr command,
                                const BiteParam *params, size_t param_count);

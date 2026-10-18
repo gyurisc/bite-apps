@@ -310,10 +310,61 @@ fn invalid_utf8_is_reported_instead_of_trusted() {
         });
 
         assert!(!bad_command.ok);
-        assert!(bad_command.text.contains("UTF-8"), "{}", bad_command.text);
+        assert_eq!(
+            bad_command.text,
+            "command ID: not valid UTF-8 text: invalid byte at offset 1"
+        );
         assert!(!bad_value.ok);
-        assert!(bad_value.text.contains("UTF-8"), "{}", bad_value.text);
+        assert_eq!(
+            bad_value.text,
+            "parameter \"text\": not valid UTF-8 text: invalid byte at offset 1"
+        );
     });
+}
+
+#[test]
+fn a_parameter_that_is_not_utf8_is_reported_with_the_offset_of_its_first_invalid_byte() {
+    let engine = bite_engine_new();
+    // "café" is five bytes but four characters; then a byte that cannot
+    // start a character.
+    let file = b"caf\xC3\xA9 \xFF au lait";
+    let params = [BiteParam {
+        name: s("text"),
+        value: bytes(file),
+    }];
+
+    let loaded = take(unsafe {
+        bite_engine_dispatch(engine, s("document.load"), params.as_ptr(), params.len())
+    });
+
+    assert!(!loaded.ok);
+    assert_eq!(
+        loaded.text,
+        "parameter \"text\": not valid UTF-8 text: invalid byte at offset 6"
+    );
+    let created = dispatch(engine, "document.create", &[]);
+    assert_eq!(created.document, 1, "the failed load created no document");
+    unsafe { bite_engine_free(engine) };
+}
+
+#[test]
+fn a_parameter_name_that_is_not_utf8_is_reported_with_its_offset() {
+    let engine = bite_engine_new();
+    let params = [BiteParam {
+        name: bytes(b"te\xFFxt"),
+        value: s("x"),
+    }];
+
+    let reply = take(unsafe {
+        bite_engine_dispatch(engine, s("document.load"), params.as_ptr(), params.len())
+    });
+
+    assert!(!reply.ok);
+    assert_eq!(
+        reply.text,
+        "a parameter name: not valid UTF-8 text: invalid byte at offset 2"
+    );
+    unsafe { bite_engine_free(engine) };
 }
 
 #[test]
