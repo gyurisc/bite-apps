@@ -339,6 +339,29 @@ final class TextBiteUITests: XCTestCase {
         XCTAssertTrue(app.wait(for: .notRunning, timeout: 10), "the app did not quit")
     }
 
+    @MainActor
+    func testReturnInACRLFFileInsertsCRLFAndTypingContinuesAfterIt() throws {
+        let file = try scratchFolder().appendingPathComponent("windows.txt")
+        try Data("one\r\ntwo".utf8).write(to: file)
+        _ = launchEditor()
+        app.typeKey("o", modifierFlags: .command)
+        choose(file.path)
+        let window = app.windows.matching(NSPredicate(format: "title BEGINSWITH 'windows'")).firstMatch
+        XCTAssertTrue(window.waitForExistence(timeout: 10), "no window for the file")
+        let editor = window.textViews["editor"]
+        editor.click()
+        editor.typeKey(.downArrow, modifierFlags: .command)
+
+        editor.typeKey(.return, modifierFlags: [])
+        editor.typeText("x")
+        app.typeKey("s", modifierFlags: .command)
+
+        // A letter typed between the CR and the LF would show here.
+        XCTAssertTrue(
+            waitUntil { (try? Data(contentsOf: file)) == Data("one\r\ntwo\r\nx".utf8) },
+            "the file holds \(String(decoding: (try? Data(contentsOf: file)) ?? Data(), as: UTF8.self).debugDescription)")
+    }
+
     // MARK: - Helpers
 
     /// A new folder in the test runner's temporary folder, removed after the

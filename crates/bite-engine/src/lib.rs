@@ -16,7 +16,7 @@
 //! | `document.create` | none | Creates an empty document. |
 //! | `document.load` | `text` | Creates a document holding `text`, with no undo history. |
 //! | `document.replace_text` | `document`, `text` | Replaces the whole text. |
-//! | `document.replace_range` | `document`, `start`, `end`, `text` | Replaces the bytes from `start` up to but not including `end`. |
+//! | `document.replace_range` | `document`, `start`, `end`, `text` | Replaces the bytes from `start` up to but not including `end`. Line breaks in `text` take the document's line ending. |
 //! | `document.undo` | `document` | Reverts the most recent undo step. |
 //! | `document.redo` | `document` | Reapplies the most recently undone step. |
 //! | `document.close` | `document` | Removes the document and its history. Later commands naming it fail as for an unknown document, and its ID is not reused. |
@@ -53,6 +53,17 @@
 //! a created or loaded document reports its whole text. Hosts use the range
 //! to update a view and select what undo or redo restored, as
 //! `docs/architecture/0005-composition-and-changed-range.md` records.
+//!
+//! # Line endings
+//!
+//! A document's line ending is that of the first line break in the text it
+//! was loaded with: LF, CRLF, or a lone CR. A created document, and one
+//! loaded from text with no line break, uses LF. `document.replace_range`
+//! converts every LF, CRLF, and CR in the text it inserts to that ending, so
+//! typing and pasting keep a file's line endings consistent. Text already in
+//! the document is never converted, and `document.replace_text` keeps its
+//! text exactly. Other separators, such as U+2028, are inserted as given.
+//! `docs/architecture/0006-documents-in-the-app.md` records why.
 //!
 //! # Unsaved changes
 //!
@@ -332,6 +343,52 @@ pub struct Document {
     /// The saved state, as the length of the undo stack in that state, or
     /// `None` once an edit has discarded it.
     saved: Option<usize>,
+    /// The line break that range edits insert.
+    line_ending: LineEnding,
+}
+
+/// A kind of line break.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum LineEnding {
+    Lf,
+    CrLf,
+    Cr,
+}
+
+impl LineEnding {
+    /// The kind of the first line break in `text`, or LF if it has none.
+    fn of(text: &str) -> Self {
+        match text.find(['\r', '\n']) {
+            Some(at) if text[at..].starts_with("\r\n") => Self::CrLf,
+            Some(at) if text[at..].starts_with('\r') => Self::Cr,
+            _ => Self::Lf,
+        }
+    }
+
+    fn as_str(self) -> &'static str {
+        match self {
+            Self::Lf => "\n",
+            Self::CrLf => "\r\n",
+            Self::Cr => "\r",
+        }
+    }
+
+    /// `text` with every LF, CRLF, and lone CR replaced by this line break.
+    fn convert(self, text: String) -> String {
+        if !text.contains(['\r', '\n']) {
+            return text;
+        }
+        let mut converted = String::with_capacity(text.len());
+        let mut rest = text.as_str();
+        while let Some(at) = rest.find(['\r', '\n']) {
+            converted.push_str(&rest[..at]);
+            converted.push_str(self.as_str());
+            let length = if rest[at..].starts_with("\r\n") { 2 } else { 1 };
+            rest = &rest[at + length..];
+        }
+        converted.push_str(rest);
+        converted
+    }
 }
 
 /// How the next range edit can join the undo step the previous one recorded.
@@ -348,6 +405,7 @@ impl Document {
     fn new(id: DocumentId, text: String) -> Self {
         Self {
             id,
+            line_ending: LineEnding::of(&text),
             text,
             undo_stack: Vec::new(),
             redo_stack: Vec::new(),
@@ -407,7 +465,8 @@ impl Document {
         changed
     }
 
-    /// Replaces the bytes `start..end`. An insertion that continues typing,
+    /// Replaces the bytes `start..end`, after giving the line breaks in
+    /// `text` the document's line ending. An insertion that continues typing,
     /// or a deletion that continues Backspace or Forward Delete, joins the
     /// previous range edit's undo step; anything else starts a new one.
     /// Replacing a range with identical text is not a change. Returns the
@@ -419,6 +478,7 @@ impl Document {
         text: String,
     ) -> Result<Option<Range<usize>>, EngineError> {
         self.check_range(start, end)?;
+        let text = self.line_ending.convert(text);
         let Some(changed) = changed_range(&self.text[start..end], &text) else {
             return Ok(None);
         };
