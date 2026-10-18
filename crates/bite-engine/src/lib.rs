@@ -20,6 +20,7 @@
 //! | `document.undo` | `document` | Reverts the most recent undo step. |
 //! | `document.redo` | `document` | Reapplies the most recently undone step. |
 //! | `document.close` | `document` | Removes the document and its history. Later commands naming it fail as for an unknown document, and its ID is not reused. |
+//! | `document.mark_saved` | `document` | Marks the current state as saved. Changes no text and ends the current undo step. |
 //!
 //! `document` is the decimal ID of a document created by this engine. Every
 //! listed parameter is required, and a command accepts no others.
@@ -36,9 +37,10 @@
 //! where the previous insertion or replacement ended, and a deletion joins
 //! it when it ends or starts where the previous deletion started, as
 //! Backspace and Forward Delete do. Any other change, and any change after
-//! `document.replace_text`, `document.undo`, or `document.redo`, starts a
-//! new step. Rejected commands and commands that change nothing do not
-//! affect grouping. Grouping depends only on the order of edits, never on
+//! `document.replace_text`, `document.undo`, `document.redo`, or
+//! `document.mark_saved`, starts a new step. Rejected commands, and commands
+//! other than `document.mark_saved` that change nothing, do not affect
+//! grouping. Grouping depends only on the order of edits, never on
 //! timing; `docs/architecture/0004-edit-model.md` records why.
 //!
 //! # Changed range
@@ -51,6 +53,17 @@
 //! a created or loaded document reports its whole text. Hosts use the range
 //! to update a view and select what undo or redo restored, as
 //! `docs/architecture/0005-composition-and-changed-range.md` records.
+//!
+//! # Unsaved changes
+//!
+//! [`Document::is_modified`] reports whether the document's state differs
+//! from the one `document.mark_saved` last marked, or, before any save,
+//! from the state it was created or loaded in. It compares positions in the
+//! history, not texts: undoing back to the saved state clears it, and an
+//! edit that discards the redo history holding the saved state leaves the
+//! document modified until the next save. Hosts dispatch
+//! `document.mark_saved` after writing the text to the document's file, as
+//! `docs/architecture/0006-documents-in-the-app.md` records.
 //!
 //! # Loading and saving
 //!
@@ -91,6 +104,7 @@ pub mod command_id {
     pub const UNDO: &str = "document.undo";
     pub const REDO: &str = "document.redo";
     pub const CLOSE: &str = "document.close";
+    pub const MARK_SAVED: &str = "document.mark_saved";
 }
 
 /// Describes one command: its stable ID and the parameters it requires.
@@ -138,6 +152,11 @@ pub const COMMANDS: &[CommandSpec] = &[
         summary: "Removes a document and its history from the engine.",
         params: &["document"],
     },
+    CommandSpec {
+        id: command_id::MARK_SAVED,
+        summary: "Marks a document's current state as saved; it then reports no unsaved changes.",
+        params: &["document"],
+    },
 ];
 
 /// A validated request to change engine state.
@@ -165,6 +184,9 @@ pub enum Command {
         document: DocumentId,
     },
     Close {
+        document: DocumentId,
+    },
+    MarkSaved {
         document: DocumentId,
     },
 }
@@ -201,6 +223,9 @@ impl Command {
                 document: args.document()?,
             }),
             command_id::CLOSE => Ok(Self::Close {
+                document: args.document()?,
+            }),
+            command_id::MARK_SAVED => Ok(Self::MarkSaved {
                 document: args.document()?,
             }),
             _ => Err(unknown_command()),
@@ -304,6 +329,9 @@ pub struct Document {
     undo_stack: Vec<String>,
     redo_stack: Vec<String>,
     open_step: Option<OpenStep>,
+    /// The saved state, as the length of the undo stack in that state, or
+    /// `None` once an edit has discarded it.
+    saved: Option<usize>,
 }
 
 /// How the next range edit can join the undo step the previous one recorded.
@@ -324,6 +352,7 @@ impl Document {
             undo_stack: Vec::new(),
             redo_stack: Vec::new(),
             open_step: None,
+            saved: Some(0),
         }
     }
 
@@ -343,6 +372,28 @@ impl Document {
         !self.redo_stack.is_empty()
     }
 
+    /// Whether the document has changes since it was last marked as saved.
+    pub fn is_modified(&self) -> bool {
+        self.saved != Some(self.undo_stack.len())
+    }
+
+    /// Marks the current state as saved and ends the current undo step, so
+    /// that undo can return to this state.
+    fn mark_saved(&mut self) {
+        self.saved = Some(self.undo_stack.len());
+        self.open_step = None;
+    }
+
+    /// Records the current text as a new undo step and discards the redo
+    /// history, with the saved state if it was there.
+    fn push_step(&mut self, text: String) {
+        if self.saved > Some(self.undo_stack.len()) {
+            self.saved = None;
+        }
+        self.undo_stack.push(text);
+        self.redo_stack.clear();
+    }
+
     /// Replacing the text with identical text is not a change: it records no
     /// undo step and keeps the redo history. Returns the changed range.
     fn replace_text(&mut self, text: String) -> Option<Range<usize>> {
@@ -351,8 +402,7 @@ impl Document {
         }
         let previous = std::mem::replace(&mut self.text, text);
         let changed = changed_range(&previous, &self.text);
-        self.undo_stack.push(previous);
-        self.redo_stack.clear();
+        self.push_step(previous);
         self.open_step = None;
         changed
     }
@@ -379,11 +429,12 @@ impl Document {
             (Some(OpenStep::Deleting { at }), true, false) => end == at || start == at,
             _ => false,
         };
+        // A step is open only after a range edit, which left no redo
+        // history.
         if !joins {
-            self.undo_stack.push(self.text.clone());
+            self.push_step(self.text.clone());
         }
         self.text.replace_range(start..end, &text);
-        self.redo_stack.clear();
         self.open_step = Some(if inserts {
             OpenStep::Typing {
                 at: start + text.len(),
@@ -721,6 +772,11 @@ impl Engine {
                     .remove(&document)
                     .ok_or(EngineError::UnknownDocument(document))?;
                 return Ok(Outcome::Closed(document));
+            }
+            Command::MarkSaved { document } => {
+                let document = self.document_mut(document)?;
+                document.mark_saved();
+                (document, None)
             }
         };
         Ok(Outcome::Document { document, changed })

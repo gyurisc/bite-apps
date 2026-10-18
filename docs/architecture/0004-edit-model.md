@@ -52,7 +52,7 @@ The engine sorts each `document.replace_range` that changes the text by what it 
 
 An insertion joins the current undo step when the previous change was an insertion or replacement and the new text goes where the previous text ended, as typing does. A deletion joins it when the previous change was a deletion and the new range ends where the previous one started, as Backspace does, or starts where it started, as Forward Delete does. Every other change starts a new step.
 
-Only commands that change the document count as the previous change. A rejected command, or one that changes nothing, leaves grouping as it was. `document.replace_text`, `document.undo`, and `document.redo` each end the current step.
+Only commands that change the document count as the previous change. A rejected command, or one that changes nothing, leaves grouping as it was. `document.replace_text`, `document.undo`, and `document.redo` each end the current step. So does `document.mark_saved`, which ADR 0006 adds: it changes no text, but ending the step lets undo return to the saved text.
 
 The engine sees only the edits, not the keys or the selection behind them. Grouping depends only on the order of edits, not on timing, so the CLI, tests, and the app produce the same steps from the same edits. These cases become tests:
 
@@ -68,6 +68,7 @@ The engine sees only the edits, not the keys or the selection behind them. Group
 | Insert `a` at 3 | Delete 3..4 | New step |
 | Insert `a` at 3, then a rejected command | Insert at 4 | Joins |
 | `document.undo`, `document.redo`, or `document.replace_text` | Any edit | New step |
+| Insert `ab` at 3, then `document.mark_saved` | Insert at 5 | New step |
 
 ### Ownership of undo
 

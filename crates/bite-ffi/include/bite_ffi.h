@@ -31,6 +31,10 @@ typedef struct {
     // Whether the command changed the text. False for errors and for
     // `document.close`.
     bool changed;
+    // Whether the document has changes since it was last marked as saved
+    // with `document.mark_saved`, or since it was created or loaded. False
+    // for errors and for `document.close`.
+    bool modified;
     // The affected document's ID when `ok`, otherwise 0.
     uint64_t document;
     // UTF-8: the document text when `ok`, otherwise an error message. Empty

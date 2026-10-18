@@ -442,6 +442,7 @@ fn registry_lists_exactly_the_parameters_each_command_requires() {
             "document.undo",
             "document.redo",
             "document.close",
+            "document.mark_saved",
         ]
     );
 

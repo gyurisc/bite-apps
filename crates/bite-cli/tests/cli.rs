@@ -190,21 +190,23 @@ fn a_range_edit_inside_a_character_saves_nothing() {
 }
 
 #[test]
-fn closing_the_document_is_refused_because_bite_cli_saves_it() {
+fn closing_or_marking_the_document_saved_is_refused_because_bite_cli_saves_it() {
     let dir = scratch("close_refused");
     let file = dir.join("notes.txt");
     fs::write(&file, "kept").unwrap();
 
-    let output = bite(&[path_arg(&file), "document.close"]);
+    for command in ["document.close", "document.mark_saved"] {
+        let output = bite(&[path_arg(&file), command]);
 
-    assert_eq!(output.status.code(), Some(2));
-    let message = stderr(&output);
-    assert!(
-        message.contains("`document.close` cannot be used here"),
-        "{message}"
-    );
-    assert!(message.contains("saves"), "{message}");
-    assert_eq!(fs::read(&file).unwrap(), b"kept");
+        assert_eq!(output.status.code(), Some(2), "{command}");
+        let message = stderr(&output);
+        assert!(
+            message.contains(&format!("`{command}` cannot be used here")),
+            "{message}"
+        );
+        assert!(message.contains("saves"), "{message}");
+        assert_eq!(fs::read(&file).unwrap(), b"kept");
+    }
 }
 
 #[test]
@@ -471,6 +473,13 @@ fn a_malformed_command_line_is_a_usage_error_and_touches_nothing() {
         vec![file, "document.load", "text=x"],
         vec![file, "document.close"],
         vec![file, "document.replace_text", "text=x", "document.close"],
+        vec![file, "document.mark_saved"],
+        vec![
+            file,
+            "document.replace_text",
+            "text=x",
+            "document.mark_saved",
+        ],
     ] {
         let output = bite(&args);
 
@@ -492,8 +501,9 @@ fn help_lists_every_command_that_edits_a_document() {
         assert!(help.starts_with("Usage: bite-cli"), "{help}");
         for spec in COMMANDS {
             // bite-cli saves the document after the last command, so it
-            // cannot close it.
-            let usable = spec.params.contains(&"document") && spec.id != "document.close";
+            // cannot close it or mark it saved.
+            let usable = spec.params.contains(&"document")
+                && !["document.close", "document.mark_saved"].contains(&spec.id);
             assert_eq!(help.contains(spec.id), usable, "{}", spec.id);
         }
         assert!(help.contains("text=VALUE"), "{help}");

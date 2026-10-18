@@ -295,6 +295,7 @@ enum Step {
     ReplaceText(&'static str),
     Undo,
     Redo,
+    MarkSaved,
 }
 
 /// Runs `steps` on a document holding `0123456789` and returns how many
@@ -331,6 +332,9 @@ fn undo_steps(steps: &[Step]) -> usize {
             Step::Redo => engine
                 .execute(Command::Redo { document })
                 .map(|outcome| outcome.document().unwrap().text().to_owned()),
+            Step::MarkSaved => engine
+                .execute(Command::MarkSaved { document })
+                .map(|outcome| outcome.document().unwrap().text().to_owned()),
         };
         result.unwrap_or_else(|error| panic!("{step:?} failed: {error}"));
     }
@@ -362,6 +366,9 @@ fn consecutive_edits_group_into_undo_steps_as_adr_0004_lists() {
             &[Insert(3, "a"), ReplaceText("new text"), Insert(4, "b")],
             3,
         ),
+        // Marking the document saved ends the step too, so undo can return
+        // to the saved text.
+        (&[Insert(3, "ab"), MarkSaved, Insert(5, "c")], 2),
     ];
 
     for (steps, expected) in cases {
