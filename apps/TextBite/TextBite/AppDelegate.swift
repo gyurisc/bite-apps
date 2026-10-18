@@ -1,19 +1,21 @@
 import AppKit
 
-/// The app. Quitting, whether from the menu, the Dock, or logging out,
-/// goes through `terminate(_:)`, which first ends every document's
-/// composition. AppKit then asks about unsaved changes only if a document
-/// has some, so without this a composition in a saved document would be
-/// lost, as ADR 0006 describes.
-final class Application: NSApplication {
-    override func terminate(_ sender: Any?) {
-        Self.finishEditing()
-        super.terminate(sender)
+/// Ends every document's composition when AppKit checks for unsaved
+/// changes before quitting. Every way of quitting reads
+/// `hasEditedDocuments` first: the Quit menu item, and the quit Apple Event
+/// that the Dock, logging out, and shutting down send, which skips
+/// `terminate(_:)`. A composition is not in the engine yet, so without this
+/// a saved document with one would quit without asking and lose it, as
+/// ADR 0006 describes. AppKit reads this only when quitting.
+final class DocumentController: NSDocumentController {
+    override var hasEditedDocuments: Bool {
+        finishEditing()
+        return super.hasEditedDocuments
     }
 
     /// Ends the composition in every document's window.
-    static func finishEditing() {
-        for case let document as TextDocument in NSDocumentController.shared.documents {
+    func finishEditing() {
+        for case let document as TextDocument in documents {
             document.model.finishEditing()
         }
     }
@@ -24,6 +26,8 @@ final class Application: NSApplication {
 /// the app quits.
 final class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationWillFinishLaunching(_ notification: Notification) {
+        // The first document controller made becomes the shared one.
+        _ = DocumentController()
         NSApp.mainMenu = Self.mainMenu()
     }
 
