@@ -550,28 +550,33 @@ final class TextBiteUITests: XCTestCase {
     /// The Open panel, or the Save panel's sheet.
     private var panel: XCUIElement {
         app.descendants(matching: .any).matching(
-            NSPredicate(
-                format: "elementType == %d OR elementType == %d OR (elementType == %d AND title == 'Open')",
-                XCUIElement.ElementType.sheet.rawValue, XCUIElement.ElementType.dialog.rawValue,
-                XCUIElement.ElementType.window.rawValue)
+            NSPredicate(format: "identifier == 'open-panel' OR identifier == 'save-panel'")
         ).firstMatch
     }
 
     /// Once the Open or Save panel is up, goes to `path` and confirms: a
     /// file to open, or the folder to save in. Return confirms the panel
-    /// only if going to the path left it open.
+    /// only if going to the path left it open. A panel that has just started
+    /// can miss the first Go to Folder, so it is tried again until the panel
+    /// closes.
     @MainActor
     private func choose(_ path: String, file: StaticString = #filePath, line: UInt = #line) {
         let panel = self.panel
         XCTAssertTrue(panel.waitForExistence(timeout: 10), "no panel opened", file: file, line: line)
-        RunLoop.current.run(until: Date().addingTimeInterval(0.5))
-        app.typeKey("g", modifierFlags: [.command, .shift])
-        RunLoop.current.run(until: Date().addingTimeInterval(1))
-        app.typeText(path + "\r")
-        RunLoop.current.run(until: Date().addingTimeInterval(1))
-        if panel.exists {
-            app.typeKey(.return, modifierFlags: [])
+        for attempt in 0..<3 {
+            RunLoop.current.run(until: Date().addingTimeInterval(attempt == 0 ? 0.5 : 2))
+            // A panel that closed late needs no second try.
+            if attempt > 0, !panel.exists { return }
+            app.typeKey("g", modifierFlags: [.command, .shift])
+            RunLoop.current.run(until: Date().addingTimeInterval(1.5))
+            app.typeText(path + "\r")
+            RunLoop.current.run(until: Date().addingTimeInterval(1))
+            if panel.exists {
+                app.typeKey(.return, modifierFlags: [])
+            }
+            if waitUntil({ !panel.exists }) { return }
         }
+        XCTFail("the panel stayed open:\n\(app.debugDescription)", file: file, line: line)
     }
 
     /// The answers AppKit offers when a document with unsaved changes
