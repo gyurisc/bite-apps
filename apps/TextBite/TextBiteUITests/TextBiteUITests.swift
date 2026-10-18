@@ -407,14 +407,21 @@ final class TextBiteUITests: XCTestCase {
     // MARK: - Helpers
 
     /// Opens the find bar with its replace field, searches for `find`, and
-    /// fills in `replaceWith`. Tab moves from the search field to the
-    /// replace field.
+    /// fills in `replaceWith`. AppKit puts focus in the replace field, so
+    /// each field is clicked before typing into it.
     @MainActor
-    private func showReplace(find: String, replaceWith: String) {
+    private func showReplace(find: String, replaceWith: String, file: StaticString = #filePath, line: UInt = #line) {
         app.typeKey("f", modifierFlags: [.command, .option])
-        app.typeText(find)
-        app.typeKey(.tab, modifierFlags: [])
-        app.typeText(replaceWith)
+        let search = app.windows.searchFields.firstMatch
+        let replace = app.windows.textFields.matching(NSPredicate(format: "placeholderValue == 'Replace'")).firstMatch
+        guard search.waitForExistence(timeout: 5), replace.waitForExistence(timeout: 5) else {
+            XCTFail("no find bar:\n\(app.debugDescription)", file: file, line: line)
+            return
+        }
+        search.click()
+        search.typeText(find)
+        replace.click()
+        replace.typeText(replaceWith)
     }
 
     /// A button of the find bar, in the front window; the Touch Bar has
