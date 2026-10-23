@@ -108,7 +108,7 @@ final class DocumentWindowController: NSWindowController {
     private static var cascadePoint = NSPoint.zero
 
     init(document: TextDocument, engine: EngineBridge) {
-        let window = NSWindow(
+        let window = DocumentWindow(
             contentRect: NSRect(x: 0, y: 0, width: 600, height: 420),
             styleMask: [.titled, .closable, .miniaturizable, .resizable],
             backing: .buffered, defer: false)
@@ -117,12 +117,24 @@ final class DocumentWindowController: NSWindowController {
         window.setContentSize(NSSize(width: 600, height: 420))
         window.center()
         Self.cascadePoint = window.cascadeTopLeft(from: Self.cascadePoint)
-        // A UI test must not find windows that an earlier run left behind.
-        window.isRestorable = !ProcessInfo.processInfo.arguments.contains("--ui-testing")
         super.init(window: window)
     }
 
     required init?(coder: NSCoder) {
         nil
+    }
+}
+
+/// A document window. Under `--ui-testing` it is never restored: otherwise
+/// AppKit reopens the windows an earlier test left, which another test then
+/// finds, or, when their files are gone, opens no window at all. NSDocument
+/// makes its windows restorable itself, so setting `isRestorable` once is
+/// not enough.
+final class DocumentWindow: NSWindow {
+    private static let restores = !ProcessInfo.processInfo.arguments.contains("--ui-testing")
+
+    override var isRestorable: Bool {
+        get { Self.restores && super.isRestorable }
+        set { super.isRestorable = newValue }
     }
 }

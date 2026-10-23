@@ -85,5 +85,5 @@ Use `NSDocument`, track unsaved changes in the engine, write files only on Save 
 - The engine gains one command and one reply field, with tests in the engine, the bridge, and the CLI. `document.replace_range` changes the line breaks it inserts for every host, including the CLI. `modified` is part of the command contract that MCP will expose.
 - The UI tests can check unsaved changes through the window's document-edited state, and saving by reading the file's bytes back.
 - An edit in a CRLF or CR file that inserts a line break replaces part of the view's text from the engine. Edits without line breaks, and every edit in an LF file, apply as before.
-- Replace All with a line break in the replacement can still mix line endings in a CRLF or CR file.
+- Replace All with a line break in the replacement can still mix line endings in a CRLF or CR file. Replace, and Replace All with a single match, are range edits, so their line breaks are converted; only a Replace All over several matches keeps them. The find bar's replace field is one line, so a line break there takes Option-Return.
 - Autosave, versions, and crash recovery can be added later without changing the engine.

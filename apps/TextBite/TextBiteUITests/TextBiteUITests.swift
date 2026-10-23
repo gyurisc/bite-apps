@@ -254,7 +254,7 @@ final class TextBiteUITests: XCTestCase {
 
         let message = app.descendants(matching: .staticText)
             .matching(NSPredicate(format: "value CONTAINS 'offset 3' OR label CONTAINS 'offset 3'")).firstMatch
-        XCTAssertTrue(message.waitForExistence(timeout: 10), "no error gave the offset")
+        XCTAssertTrue(message.waitForExistence(timeout: 10), "no error gave the offset:\n\(app.debugDescription)")
         app.typeKey(.return, modifierFlags: [])
         XCTAssertTrue(waitUntil { !message.exists })
         XCTAssertEqual(
@@ -362,7 +362,87 @@ final class TextBiteUITests: XCTestCase {
             "the file holds \(String(decoding: (try? Data(contentsOf: file)) ?? Data(), as: UTF8.self).debugDescription)")
     }
 
+    @MainActor
+    func testFindSelectsTheMatchSoTypingReplacesIt() throws {
+        let editor = launchEditor()
+        editor.typeText("a cat sat")
+
+        app.typeKey("f", modifierFlags: .command)
+        app.typeText("cat")
+        app.typeKey(.return, modifierFlags: [])
+        app.typeKey(.escape, modifierFlags: [])
+        app.typeText("dog")
+
+        assertEngineAndEditorShow("a dog sat", editor)
+    }
+
+    @MainActor
+    func testReplaceChangesTheMatchInOneUndoStep() throws {
+        let editor = launchEditor()
+        editor.typeText("a cat sat")
+
+        showReplace(find: "cat", replaceWith: "dog")
+        findBarButton("Replace").click()
+
+        assertEngineAndEditorShow("a dog sat", editor)
+        editor.click()
+        editor.typeKey("z", modifierFlags: .command)
+        assertEngineAndEditorShow("a cat sat", editor)
+    }
+
+    @MainActor
+    func testReplaceAllChangesEveryMatchInOneUndoStep() throws {
+        let editor = launchEditor()
+        editor.typeText("cat and cat and cat")
+
+        showReplace(find: "cat", replaceWith: "dog")
+        findBarButton("All").click()
+
+        assertEngineAndEditorShow("dog and dog and dog", editor)
+        editor.click()
+        editor.typeKey("z", modifierFlags: .command)
+        assertEngineAndEditorShow("cat and cat and cat", editor)
+    }
+
     // MARK: - Helpers
+
+    /// Opens the find bar with its replace field, fills in `replaceWith`,
+    /// and searches for `find`. AppKit puts focus in the replace field, and
+    /// a click there may not move focus to it, so the replacement is typed
+    /// first and the search field is clicked after. If the fields do not
+    /// hold what was typed, the failure lists what the app shows.
+    @MainActor
+    private func showReplace(find: String, replaceWith: String, file: StaticString = #filePath, line: UInt = #line) {
+        app.typeKey("f", modifierFlags: [.command, .option])
+        let search = app.windows.searchFields.firstMatch
+        let replace = app.windows.textFields.matching(NSPredicate(format: "placeholderValue == 'Replace'")).firstMatch
+        guard search.waitForExistence(timeout: 5), replace.waitForExistence(timeout: 5) else {
+            XCTFail("no find bar:\n\(app.debugDescription)", file: file, line: line)
+            return
+        }
+        app.typeText(replaceWith)
+        search.click()
+        app.typeKey("a", modifierFlags: .command)
+        app.typeText(find)
+        guard search.value as? String == find, replace.value as? String == replaceWith else {
+            XCTFail("the find bar holds the wrong text:\n\(app.debugDescription)", file: file, line: line)
+            return
+        }
+    }
+
+    /// A button of the find bar, in the front window; the Touch Bar has
+    /// buttons with the same titles. If it is missing, the failure lists
+    /// what the app shows.
+    @MainActor
+    private func findBarButton(_ title: String, file: StaticString = #filePath, line: UInt = #line) -> XCUIElement {
+        let button = app.windows.buttons.matching(
+            NSPredicate(format: "label == %@ OR title == %@", title, title)
+        ).firstMatch
+        if !button.waitForExistence(timeout: 5) {
+            XCTFail("no \(title) button:\n\(app.debugDescription)", file: file, line: line)
+        }
+        return button
+    }
 
     /// A new folder in the test runner's temporary folder, removed after the
     /// test, for files the app opens or saves.
@@ -377,28 +457,33 @@ final class TextBiteUITests: XCTestCase {
     /// The Open panel, or the Save panel's sheet.
     private var panel: XCUIElement {
         app.descendants(matching: .any).matching(
-            NSPredicate(
-                format: "elementType == %d OR elementType == %d OR (elementType == %d AND title == 'Open')",
-                XCUIElement.ElementType.sheet.rawValue, XCUIElement.ElementType.dialog.rawValue,
-                XCUIElement.ElementType.window.rawValue)
+            NSPredicate(format: "identifier == 'open-panel' OR identifier == 'save-panel'")
         ).firstMatch
     }
 
     /// Once the Open or Save panel is up, goes to `path` and confirms: a
     /// file to open, or the folder to save in. Return confirms the panel
-    /// only if going to the path left it open.
+    /// only if going to the path left it open. A panel that has just started
+    /// can miss the first Go to Folder, so it is tried again until the panel
+    /// closes.
     @MainActor
     private func choose(_ path: String, file: StaticString = #filePath, line: UInt = #line) {
         let panel = self.panel
         XCTAssertTrue(panel.waitForExistence(timeout: 10), "no panel opened", file: file, line: line)
-        RunLoop.current.run(until: Date().addingTimeInterval(0.5))
-        app.typeKey("g", modifierFlags: [.command, .shift])
-        RunLoop.current.run(until: Date().addingTimeInterval(1))
-        app.typeText(path + "\r")
-        RunLoop.current.run(until: Date().addingTimeInterval(1))
-        if panel.exists {
-            app.typeKey(.return, modifierFlags: [])
+        for attempt in 0..<3 {
+            RunLoop.current.run(until: Date().addingTimeInterval(attempt == 0 ? 0.5 : 2))
+            // A panel that closed late needs no second try.
+            if attempt > 0, !panel.exists { return }
+            app.typeKey("g", modifierFlags: [.command, .shift])
+            RunLoop.current.run(until: Date().addingTimeInterval(1.5))
+            app.typeText(path + "\r")
+            RunLoop.current.run(until: Date().addingTimeInterval(1))
+            if panel.exists {
+                app.typeKey(.return, modifierFlags: [])
+            }
+            if waitUntil({ !panel.exists }) { return }
         }
+        XCTFail("the panel stayed open:\n\(app.debugDescription)", file: file, line: line)
     }
 
     /// The answers AppKit offers when a document with unsaved changes
@@ -506,7 +591,14 @@ final class TextBiteUITests: XCTestCase {
         app.launchArguments.append("--ui-testing")
         app.launch()
         let editor = app.textViews["editor"]
-        XCTAssertTrue(editor.waitForExistence(timeout: 10))
+        // The app opens a new document at launch. If a test before this
+        // one left the app in a state that keeps it from doing so, which has
+        // happened on CI after a failed test, a new document is made here, so
+        // the failure stays with the test that caused it.
+        if !editor.waitForExistence(timeout: 10) {
+            app.typeKey("n", modifierFlags: .command)
+        }
+        XCTAssertTrue(editor.waitForExistence(timeout: 10), "no editor:\n\(app.debugDescription)")
         editor.click()
         return editor
     }

@@ -76,7 +76,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 item("Copy", #selector(NSText.copy(_:)), "c"),
                 item("Paste", #selector(NSText.paste(_:)), "v"),
                 item("Delete", #selector(NSText.delete(_:))),
-                item("Select All", #selector(NSText.selectAll(_:)), "a")),
+                item("Select All", #selector(NSText.selectAll(_:)), "a"),
+                .separator(),
+                submenu(
+                    menu(
+                        "Find",
+                        finder("Find…", .showFindInterface, "f"),
+                        finder("Find and Replace…", .showReplaceInterface, "f", [.command, .option]),
+                        finder("Find Next", .nextMatch, "g"),
+                        finder("Find Previous", .previousMatch, "g", [.command, .shift]),
+                        finder("Use Selection for Find", .setSearchString, "e")))),
             fill(
                 window,
                 item("Minimize", #selector(NSWindow.performMiniaturize(_:)), "m"),
@@ -95,6 +104,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     ) -> NSMenuItem {
         let item = NSMenuItem(title: title, action: action, keyEquivalent: key)
         item.keyEquivalentModifierMask = modifiers
+        return item
+    }
+
+    /// An item for the text view's find bar; the tag names the action.
+    private static func finder(
+        _ title: String, _ action: NSTextFinder.Action, _ key: String,
+        _ modifiers: NSEvent.ModifierFlags = .command
+    ) -> NSMenuItem {
+        let item = item(title, #selector(NSTextView.performTextFinderAction(_:)), key, modifiers)
+        item.tag = action.rawValue
         return item
     }
 
