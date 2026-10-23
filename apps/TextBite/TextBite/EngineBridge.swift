@@ -45,13 +45,24 @@ final class EngineBridge {
         _ command: String,
         _ params: KeyValuePairs<String, String> = [:]
     ) throws -> DocumentState {
+        try dispatch(command, params: params.map { ($0.key, Array($0.value.utf8)) })
+    }
+
+    /// Runs `command` with parameter values given as bytes, such as a
+    /// file's, which reach the engine unchanged. The engine refuses bytes
+    /// that are not UTF-8, giving the offset of the first invalid one.
+    func dispatch(_ command: String, _ params: KeyValuePairs<String, Data>) throws -> DocumentState {
+        try dispatch(command, params: params.map { ($0.key, Array($0.value)) })
+    }
+
+    private func dispatch(_ command: String, params: [(String, [UInt8])]) throws -> DocumentState {
         // Rust borrows every string for the length of the call, so lay them
         // out in one buffer and point into it.
         var bytes: [UInt8] = []
         var ranges: [Range<Int>] = []
-        for string in [command] + params.flatMap({ [$0.key, $0.value] }) {
+        for string in [Array(command.utf8)] + params.flatMap({ [Array($0.0.utf8), $0.1] }) {
             let start = bytes.count
-            bytes.append(contentsOf: string.utf8)
+            bytes.append(contentsOf: string)
             ranges.append(start..<bytes.count)
         }
 

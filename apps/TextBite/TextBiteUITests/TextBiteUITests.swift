@@ -193,10 +193,7 @@ final class TextBiteUITests: XCTestCase {
     func testSavingANewDocumentWritesTheEnginesBytesAndMarksItSaved() throws {
         // Typed text, so no emoji: the tests paste those.
         let text = "caf\u{e9} \u{fc}ber"
-        let folder = FileManager.default.temporaryDirectory
-            .appendingPathComponent("TextBiteUITests-\(UUID().uuidString)")
-        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
-        addTeardownBlock { try? FileManager.default.removeItem(at: folder) }
+        let folder = try scratchFolder()
         let file = folder.appendingPathComponent("saved.txt")
         let editor = launchEditor()
         editor.typeText(text)
@@ -209,11 +206,7 @@ final class TextBiteUITests: XCTestCase {
         // The name field has focus with the name selected, and the panel
         // adds the extension whether or not it shows it.
         app.typeText("saved")
-        app.typeKey("g", modifierFlags: [.command, .shift])
-        RunLoop.current.run(until: Date().addingTimeInterval(1))
-        app.typeText(folder.path + "\r")
-        RunLoop.current.run(until: Date().addingTimeInterval(1))
-        app.typeKey(.return, modifierFlags: [])
+        choose(folder.path)
 
         XCTAssertTrue(waitUntil { FileManager.default.fileExists(atPath: file.path) }, "nothing was saved")
         XCTAssertTrue(waitUntil { !panel.exists })
@@ -226,7 +219,113 @@ final class TextBiteUITests: XCTestCase {
         XCTAssertTrue(waitUntil { self.app.windows.count == 0 }, "the saved window asked to save")
     }
 
+    @MainActor
+    func testOpeningAFileShowsItsTextAndSaveWritesAnEdit() throws {
+        let file = try scratchFolder().appendingPathComponent("sample.txt")
+        try Data("first line\nsecond line".utf8).write(to: file)
+        _ = launchEditor()
+
+        app.typeKey("o", modifierFlags: .command)
+        choose(file.path)
+
+        let window = app.windows.matching(NSPredicate(format: "title BEGINSWITH 'sample'")).firstMatch
+        XCTAssertTrue(window.waitForExistence(timeout: 10), "no window for the file")
+        let editor = window.textViews["editor"]
+        assertEngineAndEditorShow("first line\nsecond line", editor, in: window)
+        editor.click()
+        editor.typeKey(.downArrow, modifierFlags: .command)
+        editor.typeText("!")
+        app.typeKey("s", modifierFlags: .command)
+
+        XCTAssertTrue(
+            waitUntil { (try? Data(contentsOf: file)) == Data("first line\nsecond line!".utf8) },
+            "the edit was not saved")
+    }
+
+    @MainActor
+    func testAFileThatIsNotUTF8IsRefusedWithTheOffsetOfItsFirstInvalidByte() throws {
+        let file = try scratchFolder().appendingPathComponent("latin1.txt")
+        // "café" in Latin-1: the fourth byte is not UTF-8.
+        try Data([0x63, 0x61, 0x66, 0xE9, 0x0A]).write(to: file)
+        _ = launchEditor()
+
+        app.typeKey("o", modifierFlags: .command)
+        choose(file.path)
+
+        let message = app.descendants(matching: .staticText)
+            .matching(NSPredicate(format: "value CONTAINS 'offset 3' OR label CONTAINS 'offset 3'")).firstMatch
+        XCTAssertTrue(message.waitForExistence(timeout: 10), "no error gave the offset")
+        app.typeKey(.return, modifierFlags: [])
+        XCTAssertTrue(waitUntil { !message.exists })
+        XCTAssertEqual(
+            app.windows.matching(NSPredicate(format: "title BEGINSWITH 'latin1'")).count, 0,
+            "a window opened for the file")
+    }
+
+    @MainActor
+    func testRevertToSavedShowsTheFileAgain() throws {
+        let file = try scratchFolder().appendingPathComponent("revert.txt")
+        try Data("saved".utf8).write(to: file)
+        _ = launchEditor()
+        app.typeKey("o", modifierFlags: .command)
+        choose(file.path)
+        let window = app.windows.matching(NSPredicate(format: "title BEGINSWITH 'revert'")).firstMatch
+        XCTAssertTrue(window.waitForExistence(timeout: 10), "no window for the file")
+        let editor = window.textViews["editor"]
+        editor.click()
+        editor.typeKey(.downArrow, modifierFlags: .command)
+        editor.typeText(" and changed")
+        assertEngineAndEditorShow("saved and changed", editor, in: window)
+
+        app.menuBars.menuBarItems["File"].click()
+        app.menuBars.menuItems["Revert to Saved"].click()
+        let revert = app.sheets.buttons["Revert"]
+        XCTAssertTrue(revert.waitForExistence(timeout: 5), "no sheet asked to revert")
+        revert.click()
+
+        assertEngineAndEditorShow("saved", editor, in: window)
+        app.typeKey("w", modifierFlags: .command)
+        XCTAssertTrue(waitUntil { !window.exists }, "the reverted window asked to save")
+    }
+
     // MARK: - Helpers
+
+    /// A new folder in the test runner's temporary folder, removed after the
+    /// test, for files the app opens or saves.
+    private func scratchFolder() throws -> URL {
+        let folder = FileManager.default.temporaryDirectory
+            .appendingPathComponent("TextBiteUITests-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        addTeardownBlock { try? FileManager.default.removeItem(at: folder) }
+        return folder
+    }
+
+    /// The Open panel, or the Save panel's sheet.
+    private var panel: XCUIElement {
+        app.descendants(matching: .any).matching(
+            NSPredicate(
+                format: "elementType == %d OR elementType == %d OR (elementType == %d AND title == 'Open')",
+                XCUIElement.ElementType.sheet.rawValue, XCUIElement.ElementType.dialog.rawValue,
+                XCUIElement.ElementType.window.rawValue)
+        ).firstMatch
+    }
+
+    /// Once the Open or Save panel is up, goes to `path` and confirms: a
+    /// file to open, or the folder to save in. Return confirms the panel
+    /// only if going to the path left it open.
+    @MainActor
+    private func choose(_ path: String, file: StaticString = #filePath, line: UInt = #line) {
+        let panel = self.panel
+        XCTAssertTrue(panel.waitForExistence(timeout: 10), "no panel opened", file: file, line: line)
+        RunLoop.current.run(until: Date().addingTimeInterval(0.5))
+        app.typeKey("g", modifierFlags: [.command, .shift])
+        RunLoop.current.run(until: Date().addingTimeInterval(1))
+        app.typeText(path + "\r")
+        RunLoop.current.run(until: Date().addingTimeInterval(1))
+        if panel.exists {
+            app.typeKey(.return, modifierFlags: [])
+        }
+    }
 
     /// Answers Don't Save when AppKit asks whether to keep a document's
     /// changes. For a new document AppKit's sheet calls the button Delete,

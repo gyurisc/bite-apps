@@ -33,10 +33,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             menu(
                 "File",
                 item("New", #selector(NSDocumentController.newDocument(_:)), "n"),
+                item("Open…", #selector(NSDocumentController.openDocument(_:)), "o"),
+                // AppKit fills in a submenu that holds Clear Menu.
+                submenu(
+                    menu(
+                        "Open Recent",
+                        item("Clear Menu", #selector(NSDocumentController.clearRecentDocuments(_:))))),
                 .separator(),
                 item("Close", #selector(NSWindow.performClose(_:)), "w"),
                 item("Save…", #selector(NSDocument.save(_:)), "s"),
-                item("Save As…", #selector(NSDocument.saveAs(_:)), "s", [.command, .shift])),
+                item("Save As…", #selector(NSDocument.saveAs(_:)), "s", [.command, .shift]),
+                item("Revert to Saved", #selector(NSDocument.revertToSaved(_:)))),
             menu(
                 "Edit",
                 item("Undo", Selector(("undo:")), "z"),

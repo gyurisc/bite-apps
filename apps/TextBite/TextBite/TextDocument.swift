@@ -56,9 +56,26 @@ final class TextDocument: NSDocument {
         return Data(document.text.utf8)
     }
 
-    /// Opening files comes with M6's Open item.
-    nonisolated override func read(from data: Data, ofType typeName: String) throws {
-        throw CocoaError(.featureUnsupported)
+    /// Opens the file, or reads it again for Revert, passing its bytes to the
+    /// engine unchanged. Bytes that are not UTF-8 are refused with the
+    /// offset of the first invalid one, and nothing changes.
+    nonisolated override func read(from url: URL, ofType typeName: String) throws {
+        let bytes = try Data(contentsOf: url)
+        try MainActor.assumeIsolated {
+            do {
+                try model.load(bytes)
+            } catch let error as EngineError {
+                // AppKit names the file in the alert's message; the details
+                // give the engine's reason, with the offset.
+                throw CocoaError(
+                    .fileReadCorruptFile,
+                    userInfo: [
+                        NSLocalizedFailureReasonErrorKey: "It is not UTF-8 text.",
+                        NSLocalizedRecoverySuggestionErrorKey: error.message,
+                        NSURLErrorKey: url,
+                    ])
+            }
+        }
     }
 
     /// Closes the document in the engine too, whether its last window
