@@ -404,6 +404,99 @@ final class TextBiteUITests: XCTestCase {
         assertEngineAndEditorShow("cat and cat and cat", editor)
     }
 
+    @MainActor
+    func testCutCopyAndPasteGoThroughTheEngine() throws {
+        borrowPasteboard(holding: "")
+        let editor = launchEditor()
+        editor.typeText("one two")
+
+        editor.typeKey("a", modifierFlags: .command)
+        editor.typeKey("x", modifierFlags: .command)
+        assertEngineAndEditorShow("", editor)
+        editor.typeKey("v", modifierFlags: .command)
+        assertEngineAndEditorShow("one two", editor)
+
+        // Copy only "two", so pasting shows that Copy replaced what Cut put
+        // on the pasteboard.
+        editor.typeKey(.leftArrow, modifierFlags: [.option, .shift])
+        editor.typeKey("c", modifierFlags: .command)
+        editor.typeKey(.rightArrow, modifierFlags: [])
+        editor.typeKey("v", modifierFlags: .command)
+        assertEngineAndEditorShow("one twotwo", editor)
+    }
+
+    @MainActor
+    func testUseSelectionFindNextAndFindPreviousSelectMatches() throws {
+        let editor = launchEditor()
+        // No other test searches for "owl", so a search for it came from
+        // Use Selection for Find.
+        editor.typeText("owl a owl b owl")
+        editor.typeKey(.leftArrow, modifierFlags: [.option, .shift])
+        editor.typeKey("e", modifierFlags: .command)
+
+        // Find Next wraps from the last "owl" to the first.
+        editor.typeKey("g", modifierFlags: .command)
+        editor.typeText("X")
+        assertEngineAndEditorShow("X a owl b owl", editor)
+
+        // Find Previous wraps from there to the last.
+        editor.typeKey("g", modifierFlags: [.command, .shift])
+        editor.typeText("Y")
+        assertEngineAndEditorShow("X a owl b Y", editor)
+    }
+
+    @MainActor
+    func testSaveAsWritesANewFileAndLeavesTheOldOne() throws {
+        let folder = try scratchFolder()
+        let original = folder.appendingPathComponent("original.txt")
+        try Data("kept".utf8).write(to: original)
+        let copy = folder.appendingPathComponent("copy.txt")
+        _ = launchEditor()
+        app.typeKey("o", modifierFlags: .command)
+        choose(original.path)
+        let window = app.windows.matching(NSPredicate(format: "title BEGINSWITH 'original'")).firstMatch
+        XCTAssertTrue(window.waitForExistence(timeout: 10), "no window for the file")
+        let editor = window.textViews["editor"]
+        editor.click()
+        editor.typeKey(.downArrow, modifierFlags: .command)
+        editor.typeText(" and copied")
+
+        app.typeKey("s", modifierFlags: [.command, .shift])
+        XCTAssertTrue(panel.waitForExistence(timeout: 10), "no Save As panel")
+        app.typeText("copy")
+        choose(folder.path)
+
+        XCTAssertTrue(
+            waitUntil { (try? Data(contentsOf: copy)) == Data("kept and copied".utf8) }, "Save As wrote nothing")
+        XCTAssertEqual(try Data(contentsOf: original), Data("kept".utf8))
+    }
+
+    @MainActor
+    func testMinimizeAndHideTakeTheWindowAway() throws {
+        let editor = launchEditor()
+
+        app.typeKey("m", modifierFlags: .command)
+        XCTAssertTrue(waitUntil { !editor.isHittable }, "the window was not minimized")
+
+        app.activate()
+        app.typeKey("n", modifierFlags: .command)
+        let window = app.windows.firstMatch
+        XCTAssertTrue(waitUntil { window.isHittable })
+        app.typeKey("h", modifierFlags: .command)
+        XCTAssertTrue(waitUntil { !window.isHittable }, "the app was not hidden")
+    }
+
+    @MainActor
+    func testTheFileMenuHasOneOpenRecent() throws {
+        _ = launchEditor()
+        let file = app.menuBars.menuBarItems["File"]
+        file.click()
+        let items = app.menuBars.menuItems.matching(NSPredicate(format: "title == 'Open Recent'"))
+        XCTAssertTrue(items.firstMatch.waitForExistence(timeout: 5))
+        XCTAssertEqual(items.count, 1)
+        file.click()
+    }
+
     // MARK: - Helpers
 
     /// Opens the find bar with its replace field, fills in `replaceWith`,

@@ -56,12 +56,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             menu(
                 "File",
                 item("New", #selector(NSDocumentController.newDocument(_:)), "n"),
+                // AppKit adds Open Recent after Open and fills it in.
                 item("Open…", #selector(NSDocumentController.openDocument(_:)), "o"),
-                // AppKit fills in a submenu that holds Clear Menu.
-                submenu(
-                    menu(
-                        "Open Recent",
-                        item("Clear Menu", #selector(NSDocumentController.clearRecentDocuments(_:))))),
                 .separator(),
                 item("Close", #selector(NSWindow.performClose(_:)), "w"),
                 item("Save…", #selector(NSDocument.save(_:)), "s"),
