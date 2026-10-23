@@ -46,7 +46,6 @@ struct DocumentEditor: NSViewRepresentable {
             coordinator.runHistory(command, in: textView)
         }
         coordinator.model.finishEditing = { [weak textView] in textView?.endComposition() }
-        textView.windowWillClose = { [weak coordinator] in coordinator?.model.close() }
     }
 
     func updateNSView(_ scrollView: NSScrollView, context: Context) {
@@ -55,9 +54,9 @@ struct DocumentEditor: NSViewRepresentable {
     }
 
     final class Coordinator: NSObject, NSTextViewDelegate {
-        /// The window's model. A window keeps its model, so an editor stays
-        /// connected to the model it was made with, which closes with the
-        /// window.
+        /// The document's model. A window keeps its model, so an editor
+        /// stays connected to the model it was made with, which closes with
+        /// the document.
         let model: DocumentModel
 
         /// True from the engine accepting an edit until the view has applied

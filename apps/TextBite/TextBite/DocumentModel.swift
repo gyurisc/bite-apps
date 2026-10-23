@@ -15,7 +15,7 @@ struct ViewChange: Equatable {
     let changed: NSRange
 }
 
-/// The app's view of one engine document, owned by one window. Every change
+/// The app's view of one engine document, owned by one `TextDocument`. Every change
 /// goes through an engine command; this type only holds what the engine
 /// last reported.
 @Observable
@@ -28,6 +28,9 @@ final class DocumentModel {
     /// Ends editing that the engine has not seen yet, such as a composition,
     /// before a command other than an edit. The editor sets it.
     @ObservationIgnored var finishEditing: () -> Void = {}
+    /// Called with every state the engine reports. The document sets it to
+    /// follow whether there are unsaved changes.
+    @ObservationIgnored var stateDidChange: (DocumentState) -> Void = { _ in }
 
     /// A model for a document in `engine`. It creates the document when
     /// opened, so making a model has no effect on the engine.
@@ -48,7 +51,7 @@ final class DocumentModel {
     }
 
     /// Ends editing in progress, then closes the document with
-    /// `document.close`, as when its window closes.
+    /// `document.close`, as when its `TextDocument` closes.
     func close() {
         guard document != nil else { return }
         finishEditing()
@@ -63,6 +66,14 @@ final class DocumentModel {
             // expected; the window is closing, so nobody sees the message.
             errorMessage = error.localizedDescription
         }
+    }
+
+    /// Marks the engine's current state as saved, after the document's file
+    /// was written.
+    @discardableResult
+    func markSaved() -> Bool {
+        guard let document else { return false }
+        return run("document.mark_saved", ["document": String(document.id)])
     }
 
     /// Asks the engine to replace `range`, counted in UTF-16 code units of
@@ -158,8 +169,10 @@ final class DocumentModel {
     @discardableResult
     private func run(_ command: String, _ params: KeyValuePairs<String, String> = [:]) -> Bool {
         do {
-            document = try engine.dispatch(command, params)
+            let state = try engine.dispatch(command, params)
+            document = state
             errorMessage = nil
+            stateDidChange(state)
             return true
         } catch {
             errorMessage = error.localizedDescription

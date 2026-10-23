@@ -152,6 +152,7 @@ final class TextBiteUITests: XCTestCase {
         assertEngineAndEditorShow("second", secondEditor, in: secondWindow)
 
         app.typeKey("w", modifierFlags: .command)
+        dontSave()
         XCTAssertTrue(waitUntil { self.app.windows.count == 1 })
         assertOpenDocuments(1)
 
@@ -162,7 +163,87 @@ final class TextBiteUITests: XCTestCase {
         assertEngineAndEditorShow("first!", firstEditor, in: firstWindow)
     }
 
+    @MainActor
+    func testTypingInAnotherFieldLeavesTheDocumentUnchanged() throws {
+        _ = launchEditor()
+        let field = app.textFields["scratch-field"]
+        XCTAssertTrue(field.waitForExistence(timeout: 5))
+        field.click()
+        field.typeText("note")
+
+        // An unchanged document closes without asking to save.
+        app.typeKey("w", modifierFlags: .command)
+
+        XCTAssertTrue(waitUntil { self.app.windows.count == 0 }, "the window asked to save")
+    }
+
+    @MainActor
+    func testUndoingEveryEditLeavesTheDocumentUnchanged() throws {
+        let editor = launchEditor()
+        editor.typeText("a")
+        editor.typeKey("z", modifierFlags: .command)
+        assertEngineAndEditorShow("", editor)
+
+        app.typeKey("w", modifierFlags: .command)
+
+        XCTAssertTrue(waitUntil { self.app.windows.count == 0 }, "the window asked to save")
+    }
+
+    @MainActor
+    func testSavingANewDocumentWritesTheEnginesBytesAndMarksItSaved() throws {
+        // Typed text, so no emoji: the tests paste those.
+        let text = "caf\u{e9} \u{fc}ber"
+        let folder = FileManager.default.temporaryDirectory
+            .appendingPathComponent("TextBiteUITests-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        addTeardownBlock { try? FileManager.default.removeItem(at: folder) }
+        let file = folder.appendingPathComponent("saved.txt")
+        let editor = launchEditor()
+        editor.typeText(text)
+        assertEngineAndEditorShow(text, editor)
+        let window = app.windows.element(boundBy: 0)
+
+        app.typeKey("s", modifierFlags: .command)
+        let panel = window.sheets.firstMatch
+        XCTAssertTrue(panel.waitForExistence(timeout: 5))
+        // The name field has focus with the name selected, and the panel
+        // adds the extension whether or not it shows it.
+        app.typeText("saved")
+        app.typeKey("g", modifierFlags: [.command, .shift])
+        RunLoop.current.run(until: Date().addingTimeInterval(1))
+        app.typeText(folder.path + "\r")
+        RunLoop.current.run(until: Date().addingTimeInterval(1))
+        app.typeKey(.return, modifierFlags: [])
+
+        XCTAssertTrue(waitUntil { FileManager.default.fileExists(atPath: file.path) }, "nothing was saved")
+        XCTAssertTrue(waitUntil { !panel.exists })
+        XCTAssertEqual(try Data(contentsOf: file), Data(text.utf8))
+        // Undoing an edit after the save returns to the saved state.
+        editor.typeText("!")
+        editor.typeKey("z", modifierFlags: .command)
+        assertEngineAndEditorShow(text, editor)
+        app.typeKey("w", modifierFlags: .command)
+        XCTAssertTrue(waitUntil { self.app.windows.count == 0 }, "the saved window asked to save")
+    }
+
     // MARK: - Helpers
+
+    /// Answers Don't Save when AppKit asks whether to keep a document's
+    /// changes. For a new document AppKit's sheet calls the button Delete,
+    /// for a saved one Don't Save, with a typographic apostrophe; the sheet
+    /// identifies it either way. If it is missing, the failure lists what
+    /// the app shows.
+    @MainActor
+    private func dontSave(file: StaticString = #filePath, line: UInt = #line) {
+        let button = app.buttons.matching(
+            NSPredicate(format: "identifier == 'DontSaveButton' OR label BEGINSWITH 'Don' OR title BEGINSWITH 'Don'")
+        ).firstMatch
+        guard button.waitForExistence(timeout: 5) else {
+            XCTFail("nothing asked to save:\n\(app.debugDescription)", file: file, line: line)
+            return
+        }
+        button.click()
+    }
 
     /// Checks how many documents the app's engine holds, as every window
     /// shows it to UI tests.

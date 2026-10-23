@@ -7,23 +7,16 @@
 
 import SwiftUI
 
-/// One window: an editor for the window's own document in the app's engine.
+/// One document's window: an editor for the document in the app's engine.
 struct ContentView: View {
+    let model: DocumentModel
     let engine: EngineBridge
-    @State private var model: DocumentModel
     /// A field outside the document, shown only to UI tests, which check
     /// that it keeps its own undo.
     @State private var scratch = ""
 
     /// UI tests launch the app with this argument to see the engine's text.
     private let showsEngineText = ProcessInfo.processInfo.arguments.contains("--ui-testing")
-
-    init(engine: EngineBridge) {
-        self.engine = engine
-        // SwiftUI may make this view more than once for a window; a model
-        // touches the engine only when the window appears.
-        _model = State(initialValue: DocumentModel(engine: engine))
-    }
 
     var body: some View {
         VStack(spacing: 0) {
@@ -49,11 +42,13 @@ struct ContentView: View {
             }
         }
         .frame(minWidth: 360, minHeight: 200)
-        // The editor closes the document when the window closes.
+        // A new document is created in the engine when its window appears;
+        // `TextDocument` closes it.
         .onAppear { model.open() }
     }
 }
 
 #Preview {
-    ContentView(engine: EngineBridge())
+    let engine = EngineBridge()
+    ContentView(model: DocumentModel(engine: engine), engine: engine)
 }
