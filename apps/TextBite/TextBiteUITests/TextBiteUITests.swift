@@ -21,6 +21,24 @@ final class TextBiteUITests: XCTestCase {
     }
 
     @MainActor
+    func testTypedQuotesDashesAndReplacementsStayAsTyped() throws {
+        // Turned on here, with a replacement list of its own, so the test
+        // does not depend on this Mac's settings.
+        let editor = launchEditor(arguments: [
+            "-NSAutomaticQuoteSubstitutionEnabled", "YES",
+            "-NSAutomaticDashSubstitutionEnabled", "YES",
+            "-NSUserDictionaryReplacementItems", "({on=1;replace=zzq;with=ZAP;})",
+        ])
+
+        editor.typeText("\"key\": 'a' -- zzq b")
+        // AppKit substitutes a moment after typing stops, so wait long enough
+        // for it to have done so before checking it did not.
+        sleep(4)
+
+        assertEngineAndEditorShow("\"key\": 'a' -- zzq b", editor)
+    }
+
+    @MainActor
     func testBackspaceAndForwardDeleteReachTheEngine() throws {
         let editor = launchEditor()
         editor.typeText("hello")
@@ -679,9 +697,14 @@ final class TextBiteUITests: XCTestCase {
 
     /// Launches the app and returns its focused text view.
     @MainActor
-    private func launchEditor() -> XCUIElement {
+    private func launchEditor(arguments: [String] = []) -> XCUIElement {
         app = XCUIApplication()
         app.launchArguments.append("--ui-testing")
+        // Without this, AppKit opens a default's value, such as "YES", as a
+        // document.
+        if !arguments.isEmpty {
+            app.launchArguments += ["-NSTreatUnknownArgumentsAsOpen", "NO"] + arguments
+        }
         app.launch()
         let editor = app.textViews["editor"]
         // The app opens a new document at launch. If a test before this

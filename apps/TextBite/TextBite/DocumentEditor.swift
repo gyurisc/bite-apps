@@ -19,6 +19,12 @@ struct DocumentEditor: NSViewRepresentable {
         textView.isRichText = false
         textView.importsGraphics = false
         textView.allowsUndo = false
+        // Plain-text files hold code and configuration, so typed text is
+        // kept as typed: no curly quotes, dashes, or text replacements.
+        // Substitutions in the Control-click menu turns them back on.
+        textView.isAutomaticQuoteSubstitutionEnabled = false
+        textView.isAutomaticDashSubstitutionEnabled = false
+        textView.isAutomaticTextReplacementEnabled = false
         // Find and Replace use the find bar. Its edits reach the engine
         // through the delegate like any other: Replace as one range, Replace
         // All as one change to every match.

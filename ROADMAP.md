@@ -40,6 +40,7 @@ One pull request per item, in order. Tick an item in the pull request that compl
 - [x] App: Find and Replace through the text view's find bar (⌘F, ⌥⌘F); Replace and Replace All reach the engine as one edit each; UI tests
 - [x] App: the menus show only commands that work, each with its standard shortcut; the README lists the shortcuts, and a UI test uses each one
 - [x] Docs: the README says how to build a local copy of TextBite for everyday use and lists what it does and does not do
+- [x] App: typed text stays as typed, so quotes stay straight and `--` stays two hyphens; macOS text replacements do not apply (the maintainer's request of 2026-10-23); a UI test types quotes, dashes, and a replacement with substitutions turned on
 - [ ] Maintainer: check composed input by hand with a Japanese input source and the accent menu, as ADR 0005 asks, and record the result in the ADR (from M5)
 - [ ] Maintainer: use a local build for New, Open, editing, Undo and Redo, Find, Save and Save As, closing with unsaved changes, and Quit, and record anything that blocks everyday use in this file
 
