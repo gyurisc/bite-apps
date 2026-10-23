@@ -97,6 +97,29 @@ fn a_command_on_a_missing_file_creates_it_with_the_result() {
 }
 
 #[test]
+fn a_range_edit_gives_its_line_breaks_the_files_line_ending() {
+    let dir = scratch("crlf_range_edit");
+    let file = dir.join("windows.txt");
+    fs::write(&file, "one\r\ntwo").unwrap();
+
+    let output = bite(&[
+        path_arg(&file),
+        "document.replace_range",
+        "start=8",
+        "end=8",
+        "text=\nthree",
+        // The converted break is two bytes, so "four" goes after "three".
+        "document.replace_range",
+        "start=15",
+        "end=15",
+        "text=\nfour",
+    ]);
+
+    assert!(output.status.success(), "{}", stderr(&output));
+    assert_eq!(fs::read(&file).unwrap(), b"one\r\ntwo\r\nthree\r\nfour");
+}
+
+#[test]
 fn commands_are_applied_to_an_existing_file_and_saved() {
     let dir = scratch("existing_file_edited");
     let file = dir.join("notes.txt");

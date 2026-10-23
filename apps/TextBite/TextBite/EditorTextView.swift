@@ -137,16 +137,23 @@ final class EditorTextView: NSTextView {
 
     /// Sends the region's text to the engine once no marked text remains.
     /// Whether the engine applies it or not, the view then shows the engine's
-    /// text if the two differ.
+    /// text if the two differ. If the engine applied it but changed it, by
+    /// giving its line breaks the document's line ending as ADR 0006
+    /// describes, the insertion point goes after the engine's version.
     private func endIfUnmarked() {
         guard let ended = composition, !hasMarkedText() else { return }
         composition = nil
-        let length = (string as NSString).length
+        let committed = string
+        let length = (committed as NSString).length
         let viewRegion = NSRange(location: ended.start, length: length - ended.unchangedAfter - ended.start)
         let engineRegion = NSRange(
             location: ended.start, length: ended.engineLength - ended.unchangedAfter - ended.start)
-        _ = commit(engineRegion, (string as NSString).substring(with: viewRegion))
+        let applied = commit(engineRegion, (committed as NSString).substring(with: viewRegion))
         restore()
+        if applied, !(string as NSString).isEqual(to: committed) {
+            let inserted = (string as NSString).length - ended.engineLength + engineRegion.length
+            setSelectedRange(NSRange(location: ended.start + inserted, length: 0))
+        }
     }
 
     private static func plain(_ string: Any) -> String {

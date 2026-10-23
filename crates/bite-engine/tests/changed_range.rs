@@ -167,10 +167,14 @@ fn every_reported_range_rebuilds_the_new_text_from_the_old() {
         "\u{301}",
         "\u{1F34E}",
         "\u{1F350}",
+        "\n",
+        "\r\n",
+        "\r",
     ];
     let mut random = Lcg(7);
     let mut engine = Engine::new();
-    let id = load(&mut engine, "");
+    // A CRLF document, so range edits convert the line breaks they insert.
+    let id = load(&mut engine, "\r\n");
 
     for _ in 0..20_000 {
         let old = engine.document(id).unwrap().text().to_owned();
