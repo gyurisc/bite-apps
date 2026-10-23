@@ -34,6 +34,18 @@ struct DocumentEditor: NSViewRepresentable {
         textView.textContainerInset = NSSize(width: 4, height: 6)
         textView.setAccessibilityIdentifier("editor")
         Self.connect(textView, to: context.coordinator)
+        // On macOS 15, after the find bar closes, with Escape or Done, typing
+        // reaches no view, so give the text view focus. This waits a turn so
+        // it runs after AppKit has finished closing the bar, which is what
+        // leaves focus elsewhere.
+        context.coordinator.findBarObservation = scrollView.observe(\.isFindBarVisible, options: [.new]) {
+            [weak textView] _, change in
+            guard change.newValue == false else { return }
+            DispatchQueue.main.async {
+                guard let textView else { return }
+                textView.window?.makeFirstResponder(textView)
+            }
+        }
         return scrollView
     }
 
@@ -74,6 +86,9 @@ struct DocumentEditor: NSViewRepresentable {
         /// it. The engine's text is ahead of the view's then, so it must not
         /// be shown.
         private var applyingEdit = false
+
+        /// Gives the text view focus when the find bar closes.
+        var findBarObservation: NSKeyValueObservation?
 
         init(model: DocumentModel) {
             self.model = model

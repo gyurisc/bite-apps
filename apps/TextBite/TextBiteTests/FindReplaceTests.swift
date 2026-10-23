@@ -116,6 +116,18 @@ final class FindReplaceTests: XCTestCase {
     }
 
     @MainActor
+    func testClosingTheFindBarGivesTheEditorFocus() throws {
+        let (_, window, view, _) = try makeEditor("a cat sat")
+        perform(.showFindInterface, in: view)
+        XCTAssertTrue(window.makeFirstResponder(try searchField(of: view)))
+
+        view.enclosingScrollView?.isFindBarVisible = false
+        RunLoop.current.run(until: Date().addingTimeInterval(0.2))
+
+        XCTAssertTrue(window.firstResponder === view)
+    }
+
+    @MainActor
     func testReplaceAllChangesEveryMatchInOneCallAndOneUndoStep() throws {
         let (document, window, view, spy) = try makeEditor("cat and cat and cat")
         try showReplace(find: "cat", with: "dog", in: view, window)

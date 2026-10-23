@@ -395,6 +395,20 @@ final class TextBiteUITests: XCTestCase {
     }
 
     @MainActor
+    func testClosingTheFindBarWithDoneLetsTypingReachTheDocument() throws {
+        let editor = launchEditor()
+        editor.typeText("a cat sat")
+        app.typeKey("f", modifierFlags: .command)
+        app.typeText("cat")
+        app.typeKey(.return, modifierFlags: [])
+
+        findBarButton("Done").click()
+        app.typeText("dog")
+
+        assertEngineAndEditorShow("a dog sat", editor)
+    }
+
+    @MainActor
     func testReplaceChangesTheMatchInOneUndoStep() throws {
         let editor = launchEditor()
         editor.typeText("a cat sat")
