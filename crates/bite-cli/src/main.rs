@@ -91,7 +91,7 @@ fn acts_on_document(spec: &CommandSpec) -> bool {
 fn refusal(spec: &CommandSpec) -> Option<&'static str> {
     if !acts_on_document(spec) {
         Some("bite-cli opens FILE itself")
-    } else if spec.id == command_id::CLOSE {
+    } else if [command_id::CLOSE, command_id::MARK_SAVED].contains(&spec.id) {
         Some("bite-cli saves FILE after the last command")
     } else {
         None

@@ -1,6 +1,6 @@
 # ADR 0002: Hand-written C interface between Swift and the Rust engine
 
-- Status: accepted for the first slice; amended by ADR 0004, which adds `document.close`. `Engine::dispatch` now returns an `Outcome` that may name a closed document, and the C reply reports a closed document as its ID with empty text and no undo or redo. Amended by ADR 0005, which adds the changed range to the C reply.
+- Status: accepted for the first slice; amended by ADR 0004, which adds `document.close`. `Engine::dispatch` now returns an `Outcome` that may name a closed document, and the C reply reports a closed document as its ID with empty text and no undo or redo. Amended by ADR 0005, which adds the changed range to the C reply, and by ADR 0006, which adds `modified`.
 - Date: 2026-10-13
 
 ## Context
@@ -27,7 +27,7 @@ The M2 spike builds and links from Xcode with one script build phase. Through th
 
 - Adding an engine command does not change the bridge.
 - The C header and the Rust declarations are kept in step by hand; nothing checks one against the other yet.
-- A reply carries the document text, undo and redo availability, and the changed range (ADR 0005), or an error message. Structured errors or typed values would need new fields or a different mechanism.
+- A reply carries the document text, undo and redo availability, the changed range (ADR 0005), and whether the document has unsaved changes (ADR 0006), or an error message. Structured errors or typed values would need new fields or a different mechanism.
 - An engine instance is used from one thread at a time. The Swift wrapper is main-actor isolated.
 - Building the app requires a Rust toolchain. Release builds for both Mac architectures also need the `x86_64-apple-darwin` Rust target.
 - Revisit this decision if the boundary grows beyond dispatch, for example callbacks from Rust, asynchronous work, or many typed calls.

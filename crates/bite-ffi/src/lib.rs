@@ -57,6 +57,10 @@ pub struct BiteReply {
     /// Whether the command changed the text. False for errors and for
     /// `document.close`.
     pub changed: bool,
+    /// Whether the document has changes since it was last marked as saved
+    /// with `document.mark_saved`, or since it was created or loaded. False
+    /// for errors and for `document.close`.
+    pub modified: bool,
     /// The affected document's ID when `ok`, otherwise 0.
     pub document: u64,
     /// UTF-8: the document text when `ok`, otherwise an error message. Empty
@@ -78,6 +82,7 @@ const _: () = {
     assert!(offset_of!(BiteReply, can_undo) == 1);
     assert!(offset_of!(BiteReply, can_redo) == 2);
     assert!(offset_of!(BiteReply, changed) == 3);
+    assert!(offset_of!(BiteReply, modified) == 4);
     assert!(offset_of!(BiteReply, document) == 8);
     assert!(offset_of!(BiteReply, text) == 16);
     assert!(offset_of!(BiteReply, text_len) == 24);
@@ -92,6 +97,7 @@ impl BiteReply {
         can_undo: bool,
         can_redo: bool,
         changed: Option<Range<usize>>,
+        modified: bool,
         text: &str,
     ) -> Self {
         let bytes: Box<[u8]> = text.as_bytes().into();
@@ -105,6 +111,7 @@ impl BiteReply {
             can_undo,
             can_redo,
             changed: changed.is_some(),
+            modified,
             document,
             text,
             text_len,
@@ -114,7 +121,8 @@ impl BiteReply {
     }
 
     /// A closed document replies with its ID, empty text, no undo or redo,
-    /// and no change, as ADRs 0004 and 0005 record.
+    /// no change, and no unsaved changes, as ADRs 0004, 0005, and 0006
+    /// record.
     fn outcome(outcome: Outcome) -> Self {
         match outcome {
             Outcome::Document { document, changed } => Self::new(
@@ -123,14 +131,15 @@ impl BiteReply {
                 document.can_undo(),
                 document.can_redo(),
                 changed,
+                document.is_modified(),
                 document.text(),
             ),
-            Outcome::Closed(id) => Self::new(true, id.into(), false, false, None, ""),
+            Outcome::Closed(id) => Self::new(true, id.into(), false, false, None, false, ""),
         }
     }
 
     fn error(message: &str) -> Self {
-        Self::new(false, 0, false, false, None, message)
+        Self::new(false, 0, false, false, None, false, message)
     }
 }
 

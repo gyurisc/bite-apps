@@ -59,6 +59,7 @@ Use `NSDocument`, track unsaved changes in the engine, write files only on Save 
 - `document.mark_saved` is a command that takes a document, so ADR 0004's grouping rules gain it: it ends the current step although it changes no text.
 - `modified` compares states in the history, not texts. Typing a letter and deleting it is two edits, and the document is modified until it is saved or both are undone. When an edit discards the redo history that held the saved state, the document stays modified until the next save.
 - The app dispatches `document.mark_saved` after a Save or Save As has written the file, and not after a failed write or a Save To, which writes a copy and leaves the document's file as it was. It sets the document's edited state from each reply's `modified` with `updateChangeCount`.
+- `document.mark_saved` marks the state the engine holds when it is dispatched, not the state that was written. That is the same state as long as writing and the dispatch happen on the main thread with no edit between them, so the document does not write asynchronously (`canAsynchronouslyWrite`) unless the engine first learns to mark a given state.
 - The CLI saves after every run, so it refuses `document.mark_saved` as a usage error, as it refuses `document.close`.
 
 ### Saving

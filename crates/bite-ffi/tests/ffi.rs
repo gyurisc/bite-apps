@@ -26,6 +26,7 @@ struct Outcome {
     can_undo: bool,
     can_redo: bool,
     changed: Option<(usize, usize)>,
+    modified: bool,
 }
 
 fn take(reply: BiteReply) -> Outcome {
@@ -42,6 +43,7 @@ fn take(reply: BiteReply) -> Outcome {
         changed: reply
             .changed
             .then_some((reply.changed_start, reply.changed_end)),
+        modified: reply.modified,
     };
     unsafe { bite_reply_free(reply) };
     outcome
@@ -82,6 +84,7 @@ fn create_replies_with_an_empty_document() {
             can_undo: false,
             can_redo: false,
             changed: Some((0, 0)),
+            modified: false,
         }
     );
     unsafe { bite_engine_free(engine) };
@@ -186,6 +189,7 @@ fn close_replies_with_the_closed_id_and_later_commands_fail() {
                 can_undo: false,
                 can_redo: false,
                 changed: None,
+                modified: false,
             }
         );
         assert!(!after.ok);
@@ -215,6 +219,39 @@ fn replies_report_the_changed_byte_range() {
         assert_eq!(undone.changed, Some((3, 5)));
         assert!(!failed.ok);
         assert_eq!(failed.changed, None);
+    });
+}
+
+#[test]
+fn replies_report_unsaved_changes_until_the_document_is_marked_saved() {
+    with_document(|engine, id| {
+        let edited = dispatch(
+            engine,
+            "document.replace_text",
+            &[("document", id), ("text", "draft")],
+        );
+        let saved = dispatch(engine, "document.mark_saved", &[("document", id)]);
+        let undone = dispatch(engine, "document.undo", &[("document", id)]);
+        let redone = dispatch(engine, "document.redo", &[("document", id)]);
+        let failed = dispatch(engine, "document.mark_saved", &[("document", "99")]);
+
+        assert!(edited.modified);
+        assert_eq!(
+            saved,
+            Outcome {
+                ok: true,
+                document: id.parse().unwrap(),
+                text: "draft".to_owned(),
+                can_undo: true,
+                can_redo: false,
+                changed: None,
+                modified: false,
+            }
+        );
+        assert!(undone.modified);
+        assert!(!redone.modified);
+        assert!(!failed.ok);
+        assert!(!failed.modified);
     });
 }
 
