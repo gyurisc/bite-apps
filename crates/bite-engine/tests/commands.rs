@@ -580,8 +580,10 @@ fn file_bytes_survive_decoding_loading_and_saving_unchanged() {
 
 #[test]
 fn bytes_that_are_not_utf8_are_rejected_at_the_first_bad_byte() {
-    let cases: [(&[u8], usize); 5] = [
+    let cases: [(&[u8], usize); 6] = [
         (b"\xFF", 0),
+        // The offset counts bytes: "é" is two bytes, one character.
+        (b"caf\xC3\xA9 \xFF", 6),
         (b"ab\xFFcd", 2),
         (b"caf\xE9 in Latin-1", 3),
         (b"cut off mid-character \xE2\x82", 22),
