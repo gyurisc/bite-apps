@@ -39,7 +39,7 @@ One pull request per item, in order. Tick an item in the pull request that compl
 - [x] Engine and app: line breaks inserted by `document.replace_range` take the document's line ending, as ADR 0006 describes, and the view shows the engine's text where they differ; engine tests, and a UI test that types Return in a CRLF file and checks the text and the insertion point
 - [x] App: Find and Replace through the text view's find bar (⌘F, ⌥⌘F); Replace and Replace All reach the engine as one edit each; UI tests
 - [x] App: the menus show only commands that work, each with its standard shortcut; the README lists the shortcuts, and a UI test uses each one
-- [ ] Docs: the README says how to build a local copy of TextBite for everyday use and lists what it does and does not do
+- [x] Docs: the README says how to build a local copy of TextBite for everyday use and lists what it does and does not do
 - [ ] Maintainer: check composed input by hand with a Japanese input source and the accent menu, as ADR 0005 asks, and record the result in the ADR (from M5)
 - [ ] Maintainer: use a local build for New, Open, editing, Undo and Redo, Find, Save and Save As, closing with unsaved changes, and Quit, and record anything that blocks everyday use in this file
 
