@@ -104,6 +104,7 @@ Quit TextBite before replacing it. TextBite needs macOS 15.8 or later. The build
 - Undo and Redo for every edit, with typing grouped into steps; undoing back to the saved text clears the unsaved-changes mark.
 - Find, Find and Replace, Find Next, and Find Previous.
 - Keeps a file exactly as it was: a byte-order mark and every line ending stay, so an unedited file saves back byte for byte. Line breaks you type or paste take the file's line ending.
+- Keeps what you type in the editor: quotes stay straight, `--` stays two hyphens, and macOS text replacements do not apply. Each can be turned back on for one window under Substitutions in the editor's Control-click menu; the choice is not remembered. The find bar's Replace field still applies text replacements.
 - Input methods, such as Japanese input and the accent menu, send text to the document when it is committed. Unit tests cover this; the maintainer's check by hand, which ADR 0005 asks for, is still open.
 
 ### What it does not do
@@ -111,7 +112,6 @@ Quit TextBite before replacing it. TextBite needs macOS 15.8 or later. The build
 - No autosave, versions, or crash recovery: unsaved changes are lost if the app or the Mac stops.
 - Opens only UTF-8; a file in another encoding is refused with the position of its first byte that is not UTF-8.
 - Opens only files macOS counts as plain text, such as `.txt`, `.md`, `.csv`, and source code. The Open panel greys out JSON, YAML, XML, HTML, property lists, and files with no extension that macOS does not recognize, such as `.gitignore`.
-- Typing follows the macOS text substitutions: straight quotes become curly quotes, `--` becomes a dash, and text replacements apply. That changes what is saved, which matters for code and configuration files. Turn them off with Substitutions in the editor's Control-click menu.
 - Plain text only: no rich text, fonts, or styles, and no printing.
 - Does not notice when another app changes an open file, until you save; then macOS asks whether to overwrite it.
 - Every edit passes the whole text between the engine and the window, and every undo step keeps a copy of the whole text, so very large files are slow to edit and use a lot of memory.
