@@ -105,7 +105,7 @@ Quit TextBite before replacing it. TextBite needs macOS 15.8 or later. The build
 - Find, Find and Replace, Find Next, and Find Previous.
 - Keeps a file exactly as it was: a byte-order mark and every line ending stay, so an unedited file saves back byte for byte. Line breaks you type or paste take the file's line ending.
 - Keeps what you type in the editor: quotes stay straight, `--` stays two hyphens, and macOS text replacements do not apply. Each can be turned back on for one window under Substitutions in the editor's Control-click menu; the choice is not remembered. The find bar's Replace field still applies text replacements.
-- Input methods, such as Japanese input and the accent menu, send text to the document when it is committed. Unit tests cover this; the maintainer's check by hand, which ADR 0005 asks for, is still open.
+- Input methods, such as Japanese input and the accent menu, send text to the document when it is committed. Until then, Undo and Redo are greyed out and ⌘Z does nothing. Text can look finished before it is committed: with Japanese live conversion, converted text such as 日本語 keeps a thin underline until you press Return, click outside the editor, or save. Unit tests cover committing and the greyed-out Undo and Redo; the maintainer's check by hand, which ADR 0005 asks for, is still open.
 
 ### What it does not do
 
